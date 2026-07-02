@@ -26,6 +26,10 @@ check:
 lint:
 	cargo clippy
 
+# Define the target: lint-fix
+lint-fix:
+	cargo clippy --fix
+
 # Define the target: run
 run:
 	cargo run
