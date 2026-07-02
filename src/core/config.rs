@@ -28,15 +28,11 @@ impl Default for LoggingConfig {
     }
 }
 
+#[derive(Default)]
 pub struct ConfigManager {
     config_dir: Option<PathBuf>,
 }
 
-impl Default for ConfigManager {
-    fn default() -> Self {
-        Self { config_dir: None }
-    }
-}
 
 /// `ConfigManager` is responsible for getting and loading the configuration
 impl ConfigManager {

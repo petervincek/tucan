@@ -22,27 +22,27 @@ use tucan::{
 
 /// Loads application configuration
 fn load_app_config(config_manager: &ConfigManager) -> AppConfig {
-    let app_config = match config_manager.load_or_create() {
+    
+    match config_manager.load_or_create() {
         Ok(app_config) => app_config,
         Err(err) => {
             // logging is not yet initialized at this point
             eprintln!("[FATAL ERROR] Failed to load configuration file: {:?}", err);
             process::exit(1);
         }
-    };
-    app_config
+    }
 }
 
 /// Initialize logger and logging framework
 fn init_logger(logging_config: &LoggingConfig, log_manager: &LogManager) -> WorkerGuard {
-    let log_guard = match log_manager.init(logging_config) {
+    
+    match log_manager.init(logging_config) {
         Ok(log_guard) => log_guard,
         Err(err) => {
             eprintln!("[FATAL ERROR] Failed to initialize logger: {:?}", err);
             process::exit(1);
         }
-    };
-    log_guard
+    }
 }
 
 #[tokio::main]
