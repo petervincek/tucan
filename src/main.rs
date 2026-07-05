@@ -17,12 +17,14 @@ use tucan::{
         config::{AppConfig, ConfigManager, LoggingConfig},
         logging::LogManager,
     },
-    tui::{app::TerminalGuard, app::TucanApp, handler::AppExit},
+    tui::{
+        app::{TerminalGuard, TucanApp},
+        handler::AppExit,
+    },
 };
 
 /// Loads application configuration
 fn load_app_config(config_manager: &ConfigManager) -> AppConfig {
-    
     match config_manager.load_or_create() {
         Ok(app_config) => app_config,
         Err(err) => {
@@ -35,7 +37,6 @@ fn load_app_config(config_manager: &ConfigManager) -> AppConfig {
 
 /// Initialize logger and logging framework
 fn init_logger(logging_config: &LoggingConfig, log_manager: &LogManager) -> WorkerGuard {
-    
     match log_manager.init(logging_config) {
         Ok(log_guard) => log_guard,
         Err(err) => {
@@ -76,7 +77,10 @@ async fn main() -> Result<()> {
     let mut app_config = Arc::new(Mutex::new(app_config));
     let mut res: Option<Result<AppExit>> = None;
     loop {
-        match TucanApp::new(app_config.clone())?.run_app(&mut terminal) {
+        match TucanApp::new(app_config.clone())
+            .await?
+            .run_app(&mut terminal)
+        {
             Ok(AppExit::Quit) => break,
             Ok(AppExit::Restart) => {
                 debug!("Restarting the application");

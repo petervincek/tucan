@@ -16,7 +16,7 @@ update:
 
 # Define the target: test
 test:
-	cargo test -- --test-threads=1
+	cargo test
 
 # Define the target: check
 check:

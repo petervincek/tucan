@@ -1,14 +1,17 @@
-use std::{fs, path::PathBuf};
+use std::{collections::HashMap, fs, path::PathBuf};
 
 use anyhow::Result;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
+type BoardId = String;
+
 /// `AppConfig` contains the whole app configuration
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct AppConfig {
-    pub profile: String,
+    pub current_board: BoardId,
     pub logging_config: LoggingConfig,
+    pub kanban_boards: HashMap<BoardId, KanbanBoard>,
 }
 
 /// `LoggingConfig` contains logging specific configuration
@@ -28,11 +31,28 @@ impl Default for LoggingConfig {
     }
 }
 
+/// `KanbanBoard` contains metadata and db connection details for specific Tucan Kanban Board
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct KanbanBoard {
+    pub name: String,
+    pub description: String,
+    pub db_url: String,
+}
+
+impl KanbanBoard {
+    pub fn new(name: String, description: String, db_url: String) -> Self {
+        Self {
+            name,
+            description,
+            db_url,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct ConfigManager {
     config_dir: Option<PathBuf>,
 }
-
 
 /// `ConfigManager` is responsible for getting and loading the configuration
 impl ConfigManager {
@@ -69,7 +89,19 @@ impl ConfigManager {
         if !config_file.exists() {
             // Seed an empty configuration template file with default values
             let mut default_config = AppConfig::default();
-            default_config.profile = String::from("local");
+            let board_id = String::from("local-board");
+            default_config.current_board = board_id.clone();
+
+            let mut local_boards: HashMap<String, KanbanBoard> = HashMap::new();
+            local_boards.insert(
+                board_id,
+                KanbanBoard::new(
+                    String::from("Local Board"),
+                    String::from("Just a local default board"),
+                    String::from("local_board.db"),
+                ),
+            );
+            default_config.kanban_boards = local_boards;
 
             let toml_string = toml::to_string_pretty(&default_config)?;
             fs::write(&config_file, toml_string)?;
@@ -111,7 +143,7 @@ mod tests {
 
         let config = manager.load_or_create().expect("load_or_create failed");
 
-        assert_eq!(config.profile, "local");
+        assert_eq!(config.current_board, "local-board");
         assert!(config_file.exists());
     }
 
@@ -122,21 +154,21 @@ mod tests {
         fs::create_dir_all(config_file.parent().expect("missing parent dir")).unwrap();
 
         let mut expected = AppConfig::default();
-        expected.profile = String::from("custom");
+        expected.current_board = String::from("custom-board");
 
         let toml_string = toml::to_string_pretty(&expected).expect("serialize failed");
         fs::write(&config_file, toml_string).expect("write config file failed");
 
         let actual = manager.load_or_create().expect("load_or_create failed");
 
-        assert_eq!(actual.profile, expected.profile);
+        assert_eq!(actual.current_board, expected.current_board);
     }
 
     #[test]
     fn save_config_persists_configuration_to_disk() {
         let (_dir, manager) = temp_config_manager();
         let mut config = AppConfig::default();
-        config.profile = String::from("save-test");
+        config.current_board = String::from("save-test-board");
 
         manager.save_config(&config).expect("save_config failed");
 
@@ -145,7 +177,7 @@ mod tests {
         let actual_config: AppConfig =
             toml::from_str(&actual_contents).expect("parse config failed");
 
-        assert_eq!(actual_config.profile, config.profile);
+        assert_eq!(actual_config.current_board, config.current_board);
     }
 
     #[test]

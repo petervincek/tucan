@@ -3,8 +3,9 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use ratatui::{Frame, widgets::Paragraph};
+use sqlx::{Pool, Sqlite};
 
-use crate::core::config::AppConfig;
+use crate::{core::config::AppConfig, model::connection::Connection};
 
 /// `AppPage` enum represents all the application state (pages)
 /// that can be rendered and are supported, idea is to use this as
@@ -29,13 +30,20 @@ pub enum AppExit {
 /// - exposing functionality to delegate and handle custom events from backend services
 pub struct Handler {
     app_config: Arc<Mutex<AppConfig>>,
+    db_connection_pool: Arc<Pool<Sqlite>>,
 }
 
 impl Handler {
     /// creates the TUI pages and components, backend services and wires them together as a part of `Handler`
     /// manages the application state and the state of the navigation
-    pub fn new(app_config: Arc<Mutex<AppConfig>>) -> Result<Self> {
-        Ok(Self { app_config })
+    pub async fn new(app_config: Arc<Mutex<AppConfig>>) -> Result<Self> {
+        let db_connection_pool = Connection::new(app_config.clone())
+            .get_db_connection_pool()
+            .await?;
+        Ok(Self {
+            app_config,
+            db_connection_pool,
+        })
     }
 
     /// `render_app` will be responsible for rendering the actual application state according to data

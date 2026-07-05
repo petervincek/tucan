@@ -32,10 +32,10 @@ pub struct TucanApp {
 
 impl TucanApp {
     /// crates the main application instance
-    pub fn new(app_config: Arc<Mutex<AppConfig>>) -> Result<Self> {
+    pub async fn new(app_config: Arc<Mutex<AppConfig>>) -> Result<Self> {
         // create all the dependencies and wire them
         // create the main application handler that encapsulates everything
-        let handler = Handler::new(app_config)?;
+        let handler = Handler::new(app_config).await?;
         Ok(Self {
             app_handler: handler,
         })
