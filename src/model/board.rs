@@ -71,8 +71,8 @@ impl BoardColumnRepo {
         )
         .bind(Uuid::new_v4().to_string())
         .bind(&column.name)
-        .bind(&column.wip_limit)
-        .bind(&column.position)
+        .bind(column.wip_limit)
+        .bind(column.position)
         .fetch_one(&self.pool)
         .await?;
         Ok(created_board_column)
@@ -117,8 +117,8 @@ impl BoardColumnRepo {
             "#,
         )
         .bind(&column.name)
-        .bind(&column.wip_limit)
-        .bind(&column.position)
+        .bind(column.wip_limit)
+        .bind(column.position)
         .bind(&column.id)
         .fetch_optional(&self.pool)
         .await?

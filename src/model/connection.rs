@@ -71,12 +71,7 @@ impl Connection {
             // cascade behaviors work as expected throughout the application.
             let db_url = kanban_board.db_url.clone();
             let options = SqliteConnectOptions::new()
-                .filename(
-                    db_url
-                        .strip_prefix("sqlite://")
-                        .unwrap_or(&db_url)
-                        .to_string(),
-                )
+                .filename(db_url.strip_prefix("sqlite://").unwrap_or(&db_url))
                 .create_if_missing(true)
                 .journal_mode(SqliteJournalMode::Wal);
             // set the logging
@@ -87,7 +82,7 @@ impl Connection {
                 .await?;
             let pool = Arc::new(db_pool);
             *DB_POOL.lock().unwrap() = Some(pool.clone());
-            run_migrations(&*pool).await?;
+            run_migrations(&pool).await?;
             Ok(pool)
         } else {
             Err(PoolError::ConnectionNotInitialized {

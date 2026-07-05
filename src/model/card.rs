@@ -139,8 +139,8 @@ impl CardRepo {
         .bind(&card.description)
         .bind(&card.status)
         .bind(&card.blocked_reason)
-        .bind(&card.started_at)
-        .bind(&card.completed_at)
+        .bind(card.started_at)
+        .bind(card.completed_at)
         .bind(&card.id)
         .fetch_optional(&self.pool)
         .await?
