@@ -154,6 +154,7 @@ mod tests {
     use crate::model::connection::Connection;
     use crate::model::test_utils::{acquire_test_lock, reset_db_pool};
     use anyhow::Result;
+    use std::path::PathBuf;
     use std::{
         collections::HashMap,
         path::Path,
@@ -171,7 +172,7 @@ mod tests {
             KanbanBoard::new(
                 String::from("Test Board"),
                 String::from("A temporary board for tests"),
-                format!("sqlite://{}", db_path.display()),
+                PathBuf::from(format!("sqlite://{}", db_path.display())),
             ),
         );
 

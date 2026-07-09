@@ -4,6 +4,7 @@
 //! using a thread-safe connection pool with lazy initialization and automatic migration support.
 
 use std::future::Future;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
@@ -49,8 +50,7 @@ impl Connection {
         Self { config }
     }
 
-    #[cfg(test)]
-    pub(crate) fn reset_db_pool_for_tests() {
+    pub fn reset_db_pool_for_tests() {
         let _ = DB_POOL.lock().unwrap().take();
     }
 
@@ -70,8 +70,9 @@ impl Connection {
             // enforcement is enabled for every pooled connection, so that referential integrity and
             // cascade behaviors work as expected throughout the application.
             let db_url = kanban_board.db_url.clone();
+            // let db_url = db_url.into_os_string();
             let options = SqliteConnectOptions::new()
-                .filename(db_url.strip_prefix("sqlite://").unwrap_or(&db_url))
+                .filename(normalize_sqlite_file_path(&db_url))
                 .create_if_missing(true)
                 .journal_mode(SqliteJournalMode::Wal);
             // set the logging
@@ -96,6 +97,15 @@ pub async fn run_migrations(pool: &Pool<Sqlite>) -> Result<()> {
     sqlx::migrate!("./migrations").run(pool).await?;
     debug!("Run migrations scripts successful.");
     Ok(())
+}
+
+fn normalize_sqlite_file_path(db_url: &std::path::Path) -> std::path::PathBuf {
+    let db_url_str = db_url.to_string_lossy();
+    if let Some(stripped) = db_url_str.strip_prefix("sqlite://") {
+        PathBuf::from(stripped)
+    } else {
+        db_url.to_path_buf()
+    }
 }
 
 type SqliteAfterConnect = dyn for<'c> Fn(
@@ -123,6 +133,7 @@ mod tests {
     use crate::core::config::{AppConfig, KanbanBoard};
     use crate::model::test_utils::{acquire_test_lock, reset_db_pool};
     use anyhow::Result;
+    use std::path::PathBuf;
     use std::{collections::HashMap, fs, path::Path};
     use tempfile::tempdir;
 
@@ -133,7 +144,7 @@ mod tests {
             KanbanBoard::new(
                 String::from("Test Board"),
                 String::from("A temporary board for tests"),
-                format!("sqlite://{}", db_path.display()),
+                PathBuf::from(format!("sqlite://{}", db_path.display())),
             ),
         );
 
@@ -214,7 +225,7 @@ mod tests {
             KanbanBoard::new(
                 String::from("Test Board"),
                 String::from("A temporary board for tests"),
-                format!("sqlite://{}", db_path.display()),
+                PathBuf::from(format!("sqlite://{}", db_path.display())),
             ),
         );
 

@@ -17,6 +17,7 @@ use tucan::{
         config::{AppConfig, ConfigManager, LoggingConfig},
         logging::LogManager,
     },
+    model::connection::Connection,
     tui::{
         app::{TerminalGuard, TucanApp},
         handler::AppExit,
@@ -49,7 +50,7 @@ fn init_logger(logging_config: &LoggingConfig, log_manager: &LogManager) -> Work
 #[tokio::main]
 async fn main() -> Result<()> {
     // prepare the config manager
-    let config_manager = Arc::new(ConfigManager::default());
+    let mut config_manager = Arc::new(ConfigManager::default());
     // try to load the configuration
     let app_config = load_app_config(&config_manager);
     // prepare the log manager
@@ -85,6 +86,8 @@ async fn main() -> Result<()> {
             Ok(AppExit::Restart) => {
                 debug!("Restarting the application");
                 // just reload the app config (with potential changes) and let to recreate the app instance
+                Connection::reset_db_pool_for_tests();
+                config_manager = Arc::new(ConfigManager::default());
                 app_config = Arc::new(Mutex::new(load_app_config(&config_manager)));
             }
             Err(error) => res = Some(Err(error)),

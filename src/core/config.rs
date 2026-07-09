@@ -36,11 +36,11 @@ impl Default for LoggingConfig {
 pub struct KanbanBoard {
     pub name: String,
     pub description: String,
-    pub db_url: String,
+    pub db_url: PathBuf,
 }
 
 impl KanbanBoard {
-    pub fn new(name: String, description: String, db_url: String) -> Self {
+    pub fn new(name: String, description: String, db_url: PathBuf) -> Self {
         Self {
             name,
             description,
@@ -49,7 +49,7 @@ impl KanbanBoard {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ConfigManager {
     config_dir: Option<PathBuf>,
 }
@@ -98,7 +98,7 @@ impl ConfigManager {
                 KanbanBoard::new(
                     String::from("Local Board"),
                     String::from("Just a local default board"),
-                    String::from("local_board.db"),
+                    PathBuf::from("local_board.db"),
                 ),
             );
             default_config.kanban_boards = local_boards;
