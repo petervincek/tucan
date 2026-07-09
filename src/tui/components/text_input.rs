@@ -239,60 +239,60 @@ impl Widget for &TextInput {
 impl EventHandler<Option<String>, ()> for TextInput {
     /// Returns a vector of (Event, description) tuples for navigation/help display for the input widget.
     fn get_event_controls(&self) -> Vec<(Event, String)> {
-        let mut event_controls = Vec::new();
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::empty())),
-            String::from("Cancel/Exit input"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::empty())),
-            String::from("Confirm input"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Left, KeyModifiers::empty())),
-            String::from("Move cursor left"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Left, KeyModifiers::SHIFT)),
-            String::from("Select left"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Right, KeyModifiers::empty())),
-            String::from("Move cursor right"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Right, KeyModifiers::SHIFT)),
-            String::from("Select right"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty())),
-            String::from("Delete character before cursor"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Delete, KeyModifiers::empty())),
-            String::from("Delete character after cursor"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Home, KeyModifiers::empty())),
-            String::from("Move cursor to start"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::End, KeyModifiers::empty())),
-            String::from("Move cursor to end"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)),
-            String::from("Copy selection"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL)),
-            String::from("Paste clipboard"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::empty())),
-            String::from("Type character"),
-        ));
-        event_controls
+        vec![
+            (
+                Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::empty())),
+                String::from("Cancel/Exit input"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::empty())),
+                String::from("Confirm input"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Left, KeyModifiers::empty())),
+                String::from("Move cursor left"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Left, KeyModifiers::SHIFT)),
+                String::from("Select left"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Right, KeyModifiers::empty())),
+                String::from("Move cursor right"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Right, KeyModifiers::SHIFT)),
+                String::from("Select right"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty())),
+                String::from("Delete character before cursor"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Delete, KeyModifiers::empty())),
+                String::from("Delete character after cursor"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Home, KeyModifiers::empty())),
+                String::from("Move cursor to start"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::End, KeyModifiers::empty())),
+                String::from("Move cursor to end"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)),
+                String::from("Copy selection"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL)),
+                String::from("Paste clipboard"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::empty())),
+                String::from("Type character"),
+            ),
+        ]
     }
 
     /// Handles keyboard events for the input widget, supporting navigation, editing, selection, and clipboard.
@@ -329,7 +329,7 @@ impl EventHandler<Option<String>, ()> for TextInput {
                     }
                     // move the cursor to the left (if the move is possible)
                     if self.cursor_position > 0 {
-                        self.cursor_position = self.cursor_position - 1;
+                        self.cursor_position -= 1;
                     }
                 }
                 (KeyCode::Right, _) => {
@@ -342,7 +342,7 @@ impl EventHandler<Option<String>, ()> for TextInput {
                     }
                     // move the cursor to the right (if the move is possible)
                     if self.cursor_position < self.char_count() {
-                        self.cursor_position = self.cursor_position + 1;
+                        self.cursor_position += 1;
                     }
                 }
                 (KeyCode::Backspace, _) => {
@@ -374,7 +374,7 @@ impl EventHandler<Option<String>, ()> for TextInput {
                     // Accept any typed character, including uppercase, shifted punctuation, and Alt-modified input.
                     self.delete_selected_text();
                     let insert_byte = self.char_to_byte_index(self.cursor_position);
-                    self.buffer.insert_str(insert_byte, &c.to_string());
+                    self.buffer.insert(insert_byte, c);
                     self.cursor_position += 1;
                 }
                 (KeyCode::Char('c'), KeyModifiers::CONTROL) => {

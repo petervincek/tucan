@@ -435,8 +435,7 @@ impl EventHandler<(), AppExit> for &mut ManageBoardsState {
 
 /// `ManageBoards` represents the statefull widget for a page responsible for:
 /// - creating a new Kanban board (creating new db SQLite file)
-/// - changing the current Kanban board, which will allow the user to work with the
-/// changed db (Kanban Board)
+/// - changing the current Kanban board, which will allow the user to work with the changed db (Kanban Board)
 #[derive(Debug)]
 pub struct ManageBoards {
     app_config: Arc<Mutex<AppConfig>>,

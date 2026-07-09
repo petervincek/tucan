@@ -106,16 +106,14 @@ impl Handler {
                         debug!("Setting config service with restart");
                         config_service.lock().unwrap().request_restart(true);
                         notification_service.send_notification(NotificationMessage::InfoMsg(
-                            String::from(format!(
-                                "Config file perstisted, restart of app requested"
-                            )),
+                            "Config file perstisted, restart of app requested".to_string(),
                             Instant::now(),
                         ));
                     }
                     AppEvent::Config(ConfigEvent::Error(error)) => {
                         debug!("Received error: {error}");
                         notification_service.send_notification(NotificationMessage::ErrorMsg(
-                            String::from(format!("Error: {error}")),
+                            format!("Error: {error}"),
                             Instant::now(),
                         ));
                     }
@@ -127,11 +125,11 @@ impl Handler {
         Ok(Self {
             app_config: app_config.clone(),
             config_service: config_service.clone(),
-            event_bus: event_bus,
-            notification_bus: notification_bus,
+            event_bus,
+            notification_bus,
             current_page: AppPage::KanbanBoards,
             is_notification_panel_visible: true,
-            notification_panel: notification_panel,
+            notification_panel,
             manage_boards_state: ManageBoardsState::new(app_config, config_service.clone()),
             manage_board_details_state: ManageBoardDetailsState::new(),
         })

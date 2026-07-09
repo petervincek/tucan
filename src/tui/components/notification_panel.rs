@@ -75,7 +75,7 @@ impl Widget for &mut NotificationPanel {
         let list_items: Vec<ListItem> = self
             .notifications
             .iter()
-            .map(|notification| {
+            .flat_map(|notification| {
                 let (prefix, color, msg) = match notification {
                     NotificationMessage::InfoMsg(msg, _) => ("[i] -> ", Color::Blue, msg),
                     NotificationMessage::WarningMsg(msg, _) => ("[!] -> ", Color::Yellow, msg),
@@ -103,12 +103,11 @@ impl Widget for &mut NotificationPanel {
                 list_items.push(ListItem::from(Text::from(Line::from(" "))));
                 list_items
             })
-            .flat_map(|list_items| list_items) // flat-map the data
             .collect();
 
         // create panel block
         let panel_block = Block::default()
-            .title(format!(" Notifications "))
+            .title(" Notifications ".to_string())
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::DarkGray));
 

@@ -17,15 +17,15 @@ impl NotificationService {
     // `send_notification` sends the provided `NotificationMessage` with fire-and-forget approach
     pub fn send_notification(&self, notification: NotificationMessage) -> JoinHandle<()> {
         let sender = self.sender.clone();
-        let handle = tokio::spawn(async move {
+        
+        tokio::spawn(async move {
             let result = sender.send(notification.clone()).await;
             if let Err(error) = result {
                 error!("Failure sending notification: {notification:?}, error: {error}");
             } else {
                 debug!("Notification: {notification:?} send successfully");
             }
-        });
-        handle
+        })
     }
 }
 

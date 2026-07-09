@@ -18,6 +18,12 @@ use crate::{
 /// `ManageBoardDetailsState` represents the state for statefull widget `ManageBoardDetails`
 pub struct ManageBoardDetailsState {}
 
+impl Default for ManageBoardDetailsState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ManageBoardDetailsState {
     pub fn new() -> Self {
         Self {}
@@ -26,11 +32,11 @@ impl ManageBoardDetailsState {
 
 impl EventHandler<(), ()> for ManageBoardDetailsState {
     fn get_event_controls(&self) -> Vec<(Event, String)> {
-        let mut event_controls = Vec::new();
-        event_controls
+        
+        Vec::new()
     }
 
-    fn handle_event(&mut self, event: Event) -> Result<ControlFlow<(), ()>> {
+    fn handle_event(&mut self, _event: Event) -> Result<ControlFlow<(), ()>> {
         Ok(std::ops::ControlFlow::Continue(()))
     }
 }
@@ -61,7 +67,7 @@ impl StatefulWidget for ManageBoardDetails {
         self,
         area: ratatui::prelude::Rect,
         buf: &mut ratatui::prelude::Buffer,
-        state: &mut Self::State,
+        _state: &mut Self::State,
     ) {
         // get currently active board
         let active_board = { self.app_config.lock().unwrap().current_board.clone() };

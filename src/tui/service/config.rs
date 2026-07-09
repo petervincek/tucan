@@ -41,7 +41,8 @@ impl ConfigService {
         let config_manager = self.config_manager.clone();
         let app_config = app_config.clone();
         let sender = self.sender.clone();
-        let handle = tokio::spawn(async move {
+        
+        tokio::spawn(async move {
             // persist the config using a blocking task to avoid occupying Tokio worker threads
             let result =
                 tokio::task::spawn_blocking(move || config_manager.save_config(&app_config))
@@ -84,8 +85,7 @@ impl ConfigService {
                     };
                 }
             }
-        });
-        handle
+        })
     }
 }
 

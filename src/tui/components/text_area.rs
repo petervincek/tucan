@@ -95,6 +95,12 @@ impl TextAreaState {
 /// `TextArea` represents stateless widget data structure
 pub struct TextArea {}
 
+impl Default for TextArea {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TextArea {
     pub fn new() -> Self {
         Self {}
@@ -129,40 +135,40 @@ impl StatefulWidget for TextArea {
 
 impl EventHandler<Option<String>, ()> for TextAreaState {
     fn get_event_controls(&self) -> Vec<(Event, String)> {
-        let mut event_controls = vec![];
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
-            String::from("Go Back"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)),
-            String::from("Copy selection"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL)),
-            String::from("Cut selection"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL)),
-            String::from("Paste"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Left, KeyModifiers::SHIFT)),
-            String::from("Select left"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Right, KeyModifiers::SHIFT)),
-            String::from("Select right"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT)),
-            String::from("Select up"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT)),
-            String::from("Select down"),
-        ));
-        event_controls
+        vec![
+            (
+                Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+                String::from("Go Back"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)),
+                String::from("Copy selection"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL)),
+                String::from("Cut selection"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL)),
+                String::from("Paste"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Left, KeyModifiers::SHIFT)),
+                String::from("Select left"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Right, KeyModifiers::SHIFT)),
+                String::from("Select right"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT)),
+                String::from("Select up"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT)),
+                String::from("Select down"),
+            ),
+        ]
     }
 
     fn handle_event(&mut self, event: Event) -> Result<ControlFlow<Option<String>, ()>> {
@@ -186,7 +192,7 @@ impl EventHandler<Option<String>, ()> for TextAreaState {
             };
 
             if modified {
-                self.text = text_area_widget.lines().iter().cloned().collect();
+                self.text = text_area_widget.lines().to_vec();
             }
             self.cursor = text_area_widget.cursor();
             self.yank_text = text_area_widget.yank_text();
