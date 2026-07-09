@@ -61,9 +61,14 @@ impl Connection {
             return Ok(pool.clone());
         }
 
-        let config = self.config.lock().unwrap();
-        let current_board_id = &config.current_board;
-        if let Some(kanban_board) = config.kanban_boards.get(current_board_id) {
+        let (current_board_id, kanban_board) = {
+            let config = self.config.lock().unwrap();
+            let current_board_id = &config.current_board;
+            let kanban_board = config.kanban_boards.get(current_board_id);
+            (current_board_id.clone(), kanban_board.cloned())
+        };
+
+        if let Some(kanban_board) = kanban_board {
             // IMPORTANT: SQLite does NOT enforce foreign key constraints (including ON DELETE CASCADE)
             // unless PRAGMA foreign_keys = ON is set for every new connection. This is required even if
             // your schema defines foreign keys. The after_connect hook below ensures that foreign key
