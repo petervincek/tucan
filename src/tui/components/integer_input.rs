@@ -126,24 +126,24 @@ impl Widget for &IntegerInput {
 
 impl EventHandler<Option<i32>, ()> for IntegerInput {
     fn get_event_controls(&self) -> Vec<(Event, String)> {
-        let mut event_controls = Vec::new();
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::empty())),
-            String::from("Cancel/Exit input"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::empty())),
-            String::from("Confirm input"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Up, KeyModifiers::empty())),
-            String::from("Increment the integer value"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::empty())),
-            String::from("Decrement the integer value"),
-        ));
-        event_controls
+        vec![
+            (
+                Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::empty())),
+                String::from("Cancel/Exit input"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::empty())),
+                String::from("Confirm input"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Up, KeyModifiers::empty())),
+                String::from("Increment the integer value"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::empty())),
+                String::from("Decrement the integer value"),
+            ),
+        ]
     }
     fn handle_event(
         &mut self,

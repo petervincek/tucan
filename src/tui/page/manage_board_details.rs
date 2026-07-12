@@ -262,9 +262,7 @@ impl StatefulWidget for ManageBoardColumnForm {
                 .bold()
                 .fg(Color::Green)
         } else {
-            Text::from(format!("Create new column"))
-                .bold()
-                .fg(Color::Green)
+            Text::from("Create new column").bold().fg(Color::Green)
         };
         Widget::render(
             title,
@@ -677,13 +675,14 @@ impl StatefulWidget for ManageBoardDetails {
 
                 let total_columns_num = state.board_columns.len();
                 if total_columns_num == 0 {
-                    let board_placeholder = Paragraph::new(format!("No Board Columns Yet")).block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .border_style(Style::default().fg(ratatui::style::Color::Gray))
-                            .title(format!("Manage Board Details - {active_board}"))
-                            .title_style(Style::default().bold()),
-                    );
+                    let board_placeholder = Paragraph::new("No Board Columns Yet".to_string())
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .border_style(Style::default().fg(ratatui::style::Color::Gray))
+                                .title(format!("Manage Board Details - {active_board}"))
+                                .title_style(Style::default().bold()),
+                        );
                     Widget::render(board_placeholder, area, buf);
                 } else {
                     // prepare some styles
