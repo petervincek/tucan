@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite, prelude::FromRow};
@@ -5,12 +7,12 @@ use thiserror::Error;
 use uuid::Uuid;
 
 /// `BoardColumn` represents a column of Kanban Board
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, FromRow)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, FromRow, Clone)]
 pub struct BoardColumn {
     pub id: String,     // a unique identifier for the column
     pub name: String,   // column name
-    pub wip_limit: u16, // Work In Progress limit for a given column
-    pub position: u16,  // position of a column relative to the board (left -> right)
+    pub wip_limit: u32, // Work In Progress limit for a given column
+    pub position: u32,  // position of a column relative to the board (left -> right)
     pub created_at: NaiveDateTime,
 }
 
@@ -18,12 +20,12 @@ pub struct BoardColumn {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NewBoardColumn {
     pub name: String,   // column name
-    pub wip_limit: u16, // Work In Progress limit for a given column
-    pub position: u16,  // position of a column relative to the board (left -> right)
+    pub wip_limit: u32, // Work In Progress limit for a given column
+    pub position: u32,  // position of a column relative to the board (left -> right)
 }
 
 impl NewBoardColumn {
-    pub fn new(name: String, wip_limit: u16, position: u16) -> Self {
+    pub fn new(name: String, wip_limit: u32, position: u32) -> Self {
         Self {
             name,
             wip_limit,
@@ -53,11 +55,11 @@ pub type Result<T> = std::result::Result<T, BoardColumnRepoError>;
 /// `BoardColumnRepo` represents the repository service layer responsible for managing the `BoardColumn` entities in the db
 #[derive(Debug)]
 pub struct BoardColumnRepo {
-    pool: Pool<Sqlite>, // reference to the DB connection pool
+    pool: Arc<Pool<Sqlite>>, // reference to the DB connection pool
 }
 
 impl BoardColumnRepo {
-    pub fn new(pool: Pool<Sqlite>) -> Self {
+    pub fn new(pool: Arc<Pool<Sqlite>>) -> Self {
         Self { pool }
     }
 
@@ -73,7 +75,7 @@ impl BoardColumnRepo {
         .bind(&column.name)
         .bind(column.wip_limit)
         .bind(column.position)
-        .fetch_one(&self.pool)
+        .fetch_one(&*self.pool)
         .await?;
         Ok(created_board_column)
     }
@@ -87,7 +89,7 @@ impl BoardColumnRepo {
             "#,
         )
         .bind(id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&*self.pool)
         .await?
         .ok_or(BoardColumnRepoError::NotFound {
             id: String::from(id),
@@ -102,7 +104,7 @@ impl BoardColumnRepo {
             ORDER BY position ASC
             "#,
         )
-        .fetch_all(&self.pool)
+        .fetch_all(&*self.pool)
         .await?;
         Ok(columns)
     }
@@ -120,7 +122,7 @@ impl BoardColumnRepo {
         .bind(column.wip_limit)
         .bind(column.position)
         .bind(&column.id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&*self.pool)
         .await?
         .ok_or(BoardColumnRepoError::NotFound {
             id: String::from(&column.id),
@@ -135,7 +137,7 @@ impl BoardColumnRepo {
             "#,
         )
         .bind(id)
-        .execute(&self.pool)
+        .execute(&*self.pool)
         .await?;
         if result.rows_affected() == 0 {
             Err(BoardColumnRepoError::DeleteFailed {
@@ -184,7 +186,7 @@ mod tests {
 
         let connection = Connection::new(Arc::new(Mutex::new(config)));
         let pool_arc = connection.get_db_connection_pool().await?;
-        let pool = (*pool_arc).clone();
+        let pool = Arc::new((*pool_arc).clone());
 
         Ok(BoardColumnRepo::new(pool))
     }

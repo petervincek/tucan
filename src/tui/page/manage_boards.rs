@@ -816,6 +816,9 @@ mod tests {
                     AppEvent::Config(ConfigEvent::Error(_error)) => {
                         panic!("expecting no error");
                     }
+                    _ => {
+                        panic!("expecting no other event types");
+                    }
                 }
                 Ok(())
             }
@@ -875,6 +878,9 @@ mod tests {
                     }
                     AppEvent::Config(ConfigEvent::Error(_error)) => {
                         panic!("expecting no error");
+                    }
+                    _ => {
+                        panic!("expecting no other event types");
                     }
                 }
                 Ok(())

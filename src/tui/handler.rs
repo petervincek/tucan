@@ -19,6 +19,7 @@ use crate::{
         config::{AppConfig, ConfigManager},
         event_bus::EventBus,
     },
+    model::{board::BoardColumnRepo, connection::Connection},
     tui::{
         components::{
             footer::Footer,
@@ -31,7 +32,7 @@ use crate::{
             manage_board_details::{ManageBoardDetails, ManageBoardDetailsState},
             manage_boards::{ManageBoards, ManageBoardsState},
         },
-        service::{config::ConfigService, notifications::NotificationService},
+        service::{board::BoardService, config::ConfigService, notifications::NotificationService},
     },
 };
 
@@ -70,13 +71,16 @@ pub struct Handler {
     notification_panel: Arc<Mutex<NotificationPanel>>,
     // some state for statefull widget
     manage_boards_state: ManageBoardsState,
-    manage_board_details_state: ManageBoardDetailsState,
+    manage_board_details_state: Arc<Mutex<ManageBoardDetailsState>>,
 }
 
 impl Handler {
     /// creates the TUI pages and components, backend services and wires them together as a part of `Handler`
     /// manages the application state and the state of the navigation
     pub async fn new(app_config: Arc<Mutex<AppConfig>>) -> Result<Self> {
+        let db_pool = Connection::new(app_config.clone())
+            .get_db_connection_pool()
+            .await?;
         // create notification bus, notification service, notification panel
         let notification_bus = EventBus::<NotificationMessage>::new();
         let (notification_service_sender, register_event_handler_notification_service) =
@@ -98,8 +102,8 @@ impl Handler {
             create_config_service(Arc::new(ConfigManager::default()), &event_bus);
         // register the event handler
         register_event_handler_config_service(Box::new({
-            // let settings_page = Arc::clone(&settings_page);
             let config_service = config_service.clone();
+            let notification_service = notification_service.clone();
             move |app_event| {
                 match app_event {
                     AppEvent::Config(ConfigEvent::ConfigPersisted) => {
@@ -117,7 +121,28 @@ impl Handler {
                             Instant::now(),
                         ));
                     }
+                    AppEvent::Board(_) => {}
+                    AppEvent::Card(_) => {}
                 }
+                Ok(())
+            }
+        }));
+
+        let board_column_repo = Arc::new(BoardColumnRepo::new(db_pool.clone()));
+        let (board_service, register_event_handler_board_service) =
+            create_board_service(board_column_repo, &event_bus);
+
+        let manage_board_details_state = Arc::new(Mutex::new(ManageBoardDetailsState::new(
+            app_config.clone(),
+            board_service,
+            notification_service.clone(),
+        )));
+
+        register_event_handler_board_service(Box::new({
+            let manage_board_details_state = manage_board_details_state.clone();
+            move |app_event| {
+                let manage_board_details_state = &mut manage_board_details_state.lock().unwrap();
+                manage_board_details_state.handle_app_event(app_event);
                 Ok(())
             }
         }));
@@ -131,7 +156,7 @@ impl Handler {
             is_notification_panel_visible: true,
             notification_panel,
             manage_boards_state: ManageBoardsState::new(app_config, config_service.clone()),
-            manage_board_details_state: ManageBoardDetailsState::new(),
+            manage_board_details_state,
         })
     }
 
@@ -206,13 +231,13 @@ impl Handler {
                 );
             }
             AppPage::KanbanBoardDetails => {
-                let manage_board_details_state = &mut self.manage_board_details_state;
+                let manage_board_details_state =
+                    &mut self.manage_board_details_state.lock().unwrap();
                 include_delegated_event_controls(
                     &mut event_controls,
                     manage_board_details_state.get_event_controls(),
                 );
-                let manage_board_details_page =
-                    ManageBoardDetails::new(self.app_config.clone(), self.config_service.clone());
+                let manage_board_details_page = ManageBoardDetails::new();
                 f.render_stateful_widget(
                     manage_board_details_page,
                     dynamic_content_area,
@@ -278,7 +303,15 @@ impl Handler {
                                     return Ok(AppExit::Restart);
                                 }
                             }
-                            AppPage::KanbanBoardDetails => {}
+                            AppPage::KanbanBoardDetails => {
+                                let manage_board_details_state =
+                                    &mut self.manage_board_details_state.lock().unwrap();
+                                let result =
+                                    manage_board_details_state.handle_event(current_event)?;
+                                if let ControlFlow::Break(_) = result {
+                                    return Ok(AppExit::Restart);
+                                }
+                            }
                         }
                     }
                 }
@@ -383,4 +416,16 @@ pub fn create_config_service(
         config_service_sender,
     )));
     (config_service, register_event_handler_config_service)
+}
+
+pub fn create_board_service(
+    board_column_repo: Arc<BoardColumnRepo>,
+    event_bus: &EventBus<AppEvent>,
+) -> (
+    Arc<BoardService>,
+    impl FnOnce(Box<dyn Fn(AppEvent) -> Result<()> + Send + Sync>) + Send + 'static,
+) {
+    let (board_service_sender, register_event_handler_board_service) = event_bus.create_channel();
+    let config_service = Arc::new(BoardService::new(board_column_repo, board_service_sender));
+    (config_service, register_event_handler_board_service)
 }

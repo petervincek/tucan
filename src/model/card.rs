@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite, prelude::FromRow};
@@ -67,11 +69,11 @@ pub type Result<T> = std::result::Result<T, CardRepoError>;
 /// `CardRepo` represents the repository service layer responsible for managing the `Card` entities in the db
 #[derive(Debug)]
 pub struct CardRepo {
-    pool: Pool<Sqlite>, // reference to the DB connection pool
+    pool: Arc<Pool<Sqlite>>, // reference to the DB connection pool
 }
 
 impl CardRepo {
-    pub fn new(pool: Pool<Sqlite>) -> Self {
+    pub fn new(pool: Arc<Pool<Sqlite>>) -> Self {
         Self { pool }
     }
 
@@ -89,7 +91,7 @@ impl CardRepo {
         .bind(&card.description)
         .bind(&card.status)
         .bind(&card.blocked_reason)
-        .fetch_one(&self.pool)
+        .fetch_one(&*self.pool)
         .await?;
         Ok(created_card)
     }
@@ -103,7 +105,7 @@ impl CardRepo {
             "#,
         )
         .bind(id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&*self.pool)
         .await?
         .ok_or(CardRepoError::NotFound {
             id: String::from(id),
@@ -120,7 +122,7 @@ impl CardRepo {
             "#,
         )
         .bind(column_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&*self.pool)
         .await?;
         Ok(cards)
     }
@@ -142,7 +144,7 @@ impl CardRepo {
         .bind(card.started_at)
         .bind(card.completed_at)
         .bind(&card.id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&*self.pool)
         .await?
         .ok_or(CardRepoError::NotFound {
             id: String::from(&card.id),
@@ -157,7 +159,7 @@ impl CardRepo {
             "#,
         )
         .bind(id)
-        .execute(&self.pool)
+        .execute(&*self.pool)
         .await?;
         if result.rows_affected() == 0 {
             Err(CardRepoError::DeleteFailed {
@@ -206,12 +208,11 @@ mod tests {
         };
 
         let connection = Connection::new(Arc::new(Mutex::new(config)));
-        let pool_arc = connection.get_db_connection_pool().await?;
-        let pool = (*pool_arc).clone();
+        let pool = connection.get_db_connection_pool().await?;
         Ok(CardRepo::new(pool))
     }
 
-    async fn insert_test_column(pool: &sqlx::SqlitePool, name: &str) -> Result<String> {
+    async fn insert_test_column(pool: Arc<Pool<Sqlite>>, name: &str) -> Result<String> {
         let column_repo = BoardColumnRepo::new(pool.clone());
         let created = column_repo
             .create_column(NewBoardColumn::new(String::from(name), 5, 0))
@@ -225,7 +226,7 @@ mod tests {
         let db_file = temp_dir.path().join("card_create.db");
         let repo = init_repo(&db_file).await?;
 
-        let column_id = insert_test_column(&repo.pool, "Column 1").await?;
+        let column_id = insert_test_column(repo.pool.clone(), "Column 1").await?;
 
         let created = repo
             .create_card(NewCard::new(
@@ -295,7 +296,7 @@ mod tests {
         let db_file = temp_dir.path().join("card_list.db");
         let repo = init_repo(&db_file).await?;
 
-        let column_id = insert_test_column(&repo.pool, "Column 2").await?;
+        let column_id = insert_test_column(repo.pool.clone(), "Column 2").await?;
 
         repo.create_card(NewCard::new(
             column_id.clone(),
@@ -357,7 +358,7 @@ mod tests {
         let db_file = temp_dir.path().join("card_update.db");
         let repo = init_repo(&db_file).await?;
 
-        let column_id = insert_test_column(&repo.pool, "Column 4").await?;
+        let column_id = insert_test_column(repo.pool.clone(), "Column 4").await?;
         let created = repo
             .create_card(NewCard::new(
                 column_id.clone(),
@@ -388,7 +389,7 @@ mod tests {
         let db_file = temp_dir.path().join("card_fk_update.db");
         let repo = init_repo(&db_file).await?;
 
-        let column_id = insert_test_column(&repo.pool, "Column 5").await?;
+        let column_id = insert_test_column(repo.pool.clone(), "Column 5").await?;
         let created = repo
             .create_card(NewCard::new(
                 column_id.clone(),
@@ -444,7 +445,7 @@ mod tests {
         let db_file = temp_dir.path().join("card_delete.db");
         let repo = init_repo(&db_file).await?;
 
-        let column_id = insert_test_column(&repo.pool, "Column 6").await?;
+        let column_id = insert_test_column(repo.pool.clone(), "Column 6").await?;
         let created = repo
             .create_card(NewCard::new(
                 column_id.clone(),
