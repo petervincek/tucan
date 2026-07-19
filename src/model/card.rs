@@ -7,7 +7,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 /// `Card` represents a card of Kanban Board
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, FromRow)]
 pub struct Card {
     pub id: String,                     // a unique identifier for the card
     pub column_id: String,              // relationship to the Kanban Board

@@ -10,7 +10,7 @@ use ratatui::{
 use crate::tui::page::common::EventHandler;
 
 /// `TextAreaState` represents all the data needed for the stateless widget `TextArea`
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TextAreaState {
     title: String,
     focused: bool,

@@ -1,6 +1,9 @@
 use anyhow::Error;
 
-use crate::model::board::{BoardColumn, BoardColumnRepoError};
+use crate::model::{
+    board::{BoardColumn, BoardColumnRepoError},
+    card::{Card, CardRepoError},
+};
 
 /// `AppEvent` enum represents all the application events/messages
 /// used for async communication between the main terminal/rendering loop
@@ -32,4 +35,11 @@ pub enum BoardEvent {
 
 /// `CardEvent` enum represent event related to activities around Kanban card entities
 #[derive(Debug)]
-pub enum CardEvent {}
+pub enum CardEvent {
+    CardCreated(Card),
+    CardFetched(Card),
+    CardsFetched(Vec<Card>),
+    CardUpdated(Card),
+    CardDeleted(String),
+    Error(CardRepoError),
+}

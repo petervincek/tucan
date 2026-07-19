@@ -19,7 +19,7 @@ use crate::{
         config::{AppConfig, ConfigManager},
         event_bus::EventBus,
     },
-    model::{board::BoardColumnRepo, connection::Connection},
+    model::{board::BoardColumnRepo, card::CardRepo, connection::Connection},
     tui::{
         components::{
             footer::Footer,
@@ -32,7 +32,10 @@ use crate::{
             manage_board_details::{ManageBoardDetails, ManageBoardDetailsState},
             manage_boards::{ManageBoards, ManageBoardsState},
         },
-        service::{board::BoardService, config::ConfigService, notifications::NotificationService},
+        service::{
+            board::BoardService, card::CardService, config::ConfigService,
+            notifications::NotificationService,
+        },
     },
 };
 
@@ -132,13 +135,27 @@ impl Handler {
         let (board_service, register_event_handler_board_service) =
             create_board_service(board_column_repo, &event_bus);
 
+        let card_repo = Arc::new(CardRepo::new(db_pool.clone()));
+        let (card_service, register_event_handler_card_service) =
+            create_card_service(card_repo, &event_bus);
+
         let manage_board_details_state = Arc::new(Mutex::new(ManageBoardDetailsState::new(
             app_config.clone(),
             board_service,
+            card_service,
             notification_service.clone(),
         )));
 
         register_event_handler_board_service(Box::new({
+            let manage_board_details_state = manage_board_details_state.clone();
+            move |app_event| {
+                let manage_board_details_state = &mut manage_board_details_state.lock().unwrap();
+                manage_board_details_state.handle_app_event(app_event);
+                Ok(())
+            }
+        }));
+
+        register_event_handler_card_service(Box::new({
             let manage_board_details_state = manage_board_details_state.clone();
             move |app_event| {
                 let manage_board_details_state = &mut manage_board_details_state.lock().unwrap();
@@ -426,6 +443,18 @@ pub fn create_board_service(
     impl FnOnce(Box<dyn Fn(AppEvent) -> Result<()> + Send + Sync>) + Send + 'static,
 ) {
     let (board_service_sender, register_event_handler_board_service) = event_bus.create_channel();
-    let config_service = Arc::new(BoardService::new(board_column_repo, board_service_sender));
-    (config_service, register_event_handler_board_service)
+    let board_service = Arc::new(BoardService::new(board_column_repo, board_service_sender));
+    (board_service, register_event_handler_board_service)
+}
+
+pub fn create_card_service(
+    card_repo: Arc<CardRepo>,
+    event_bus: &EventBus<AppEvent>,
+) -> (
+    Arc<CardService>,
+    impl FnOnce(Box<dyn Fn(AppEvent) -> Result<()> + Send + Sync>) + Send + 'static,
+) {
+    let (card_service_sender, register_event_handler_card_service) = event_bus.create_channel();
+    let card_service = Arc::new(CardService::new(card_repo, card_service_sender));
+    (card_service, register_event_handler_card_service)
 }
