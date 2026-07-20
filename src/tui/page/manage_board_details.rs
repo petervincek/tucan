@@ -13,6 +13,7 @@ use ratatui::{
     text::{Line, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, StatefulWidget, Widget},
 };
+use textwrap::wrap;
 use tracing::debug;
 
 use crate::{
@@ -30,7 +31,10 @@ use crate::{
             text_area::{TextArea, TextAreaState},
             text_input::TextInput,
         },
-        event::events::{AppEvent, BoardEvent, CardEvent},
+        event::events::{
+            AppEvent::{self},
+            BoardEvent, CardEvent,
+        },
         handler::include_delegated_event_controls,
         page::common::{Center, EventHandler},
         service::{board::BoardService, card::CardService, notifications::NotificationService},
@@ -866,6 +870,7 @@ enum PageView {
     BoardDetails,
     ManageBoardColumn,
     ManageCard,
+    ViewCard,
     ConfirmDialog,
 }
 
@@ -903,9 +908,11 @@ pub struct ManageBoardDetailsState {
     notification_service: Arc<NotificationService>,
     // page state
     board_columns: Vec<BoardColumnWithCards>,
+    card_to_view: Option<Card>,
     current_column_index: usize,
     page_view: PageView,
     current_action_to_confirm: ActionToConfirm,
+    view_card_scroll_offset: u16,
     manage_board_column_form_state: ManageBoardColumnFormState,
     manage_card_form_state: ManageCardFormState,
     confirm_dialog_state: (Vec<Choice<bool>>, ChoicePickerState),
@@ -941,9 +948,11 @@ impl ManageBoardDetailsState {
             card_service,
             notification_service,
             board_columns: vec![],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::BoardDetails,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
@@ -1175,6 +1184,20 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                     self.manage_card_form_state.get_event_controls(),
                 );
             }
+            PageView::ViewCard => {
+                event_controls.push((
+                    Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+                    String::from("Go Back to Board List"),
+                ));
+                event_controls.push((
+                    Event::Key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)),
+                    String::from("Scroll Card Up"),
+                ));
+                event_controls.push((
+                    Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)),
+                    String::from("Scroll Card Down"),
+                ));
+            }
         }
         event_controls
     }
@@ -1221,6 +1244,19 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                             if card_list_state.selected().is_some() {
                                 self.current_action_to_confirm = ActionToConfirm::DeleteCard;
                                 self.page_view = PageView::ConfirmDialog;
+                            }
+                        }
+                        (KeyCode::Enter, KeyModifiers::NONE) => {
+                            debug!(
+                                "Handling detail view of selected card from currently highlighted column"
+                            );
+                            let card_list_state =
+                                self.board_columns[self.current_column_index].list_state;
+                            if let Some(selected_card_index) = card_list_state.selected() {
+                                let cards = &self.board_columns[self.current_column_index].cards;
+                                self.card_to_view = Some(cards[selected_card_index].clone());
+                                self.view_card_scroll_offset = 0;
+                                self.page_view = PageView::ViewCard;
                             }
                         }
                         (KeyCode::Right, KeyModifiers::NONE) => {
@@ -1426,6 +1462,25 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                     }
                 }
             }
+            PageView::ViewCard => {
+                if let Event::Key(key_event) = event {
+                    match (key_event.code, key_event.modifiers) {
+                        (KeyCode::Esc, KeyModifiers::NONE) => {
+                            self.page_view = PageView::BoardDetails
+                        }
+                        (KeyCode::Up, KeyModifiers::NONE) => {
+                            if self.view_card_scroll_offset > 0 {
+                                self.view_card_scroll_offset -= 1;
+                            }
+                        }
+                        (KeyCode::Down, KeyModifiers::NONE) => {
+                            self.view_card_scroll_offset =
+                                self.view_card_scroll_offset.saturating_add(1);
+                        }
+                        _ => {}
+                    }
+                }
+            }
         }
         Ok(std::ops::ControlFlow::Continue(()))
     }
@@ -1611,6 +1666,164 @@ impl StatefulWidget for ManageBoardDetails {
                 let manage_card_form_state = &mut state.manage_card_form_state;
                 StatefulWidget::render(manage_card_form, area, buf, manage_card_form_state);
             }
+            PageView::ViewCard => {
+                if let Some(card) = &state.card_to_view {
+                    let Card {
+                        title,
+                        status,
+                        blocked_reason,
+                        description,
+                        created_at,
+                        started_at,
+                        completed_at,
+                        id: _id,
+                        column_id: _column_id,
+                    } = card;
+
+                    // prepare the layout and the places for rendering
+                    let (
+                        title_area,
+                        status_created_at_area,
+                        maybe_blocked_reason_area,
+                        description_area,
+                    ) = if let Some(blocked_reason) = blocked_reason
+                        && blocked_reason.len() != 0
+                    {
+                        let vertical_layout = Layout::vertical([
+                            Constraint::Length(2), // place for title
+                            Constraint::Length(2), // place for status + created_at
+                            Constraint::Length(2), // place for blocked_reason
+                            Constraint::Fill(1),   // place for description
+                        ]);
+                        let [
+                            title_area,
+                            status_created_at_area,
+                            blocked_reason_area,
+                            description_area,
+                        ] = area.layout(&vertical_layout);
+                        (
+                            title_area,
+                            status_created_at_area,
+                            Some(blocked_reason_area),
+                            description_area,
+                        )
+                    } else {
+                        let vertical_layout = Layout::vertical([
+                            Constraint::Length(2), // place for title
+                            Constraint::Length(2), // place for status + created_at
+                            Constraint::Fill(1),   // place for description
+                        ]);
+                        let [title_area, status_created_at_area, description_area] =
+                            area.layout(&vertical_layout);
+                        (title_area, status_created_at_area, None, description_area)
+                    };
+
+                    let horizontal_row_layout =
+                        Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]);
+                    let [status_area, created_at_area] =
+                        status_created_at_area.layout(&horizontal_row_layout);
+
+                    // render title
+                    let title_paragraph = Paragraph::new(format!("{title}"));
+                    Widget::render(
+                        title_paragraph,
+                        Center::builder(title_area)
+                            .horizontally(false)
+                            .vertically(false)
+                            .build()
+                            .center(),
+                        buf,
+                    );
+
+                    // render the status
+                    let status_style = if status == "Active" {
+                        Style::default().fg(Color::Green)
+                    } else {
+                        Style::default().fg(Color::Red)
+                    };
+                    let status_paragraph =
+                        Paragraph::new(format!("status: {status}")).style(status_style);
+                    Widget::render(
+                        status_paragraph,
+                        Center::builder(status_area)
+                            .horizontally(false)
+                            .vertically(false)
+                            .build()
+                            .center(),
+                        buf,
+                    );
+
+                    // render the created_at
+                    let created_at_paragraph = Paragraph::new(format!("created: {created_at}"));
+                    Widget::render(
+                        created_at_paragraph,
+                        Center::builder(created_at_area)
+                            .horizontally(false)
+                            .vertically(false)
+                            .build()
+                            .center(),
+                        buf,
+                    );
+
+                    // render the optional blocked_reason
+                    if let Some(blocked_reason) = blocked_reason
+                        && let Some(blocked_reason_area) = maybe_blocked_reason_area
+                    {
+                        let blocked_reason_paragraph =
+                            Paragraph::new(format!("reason: {blocked_reason}"))
+                                .style(Style::default().fg(Color::Red));
+                        Widget::render(
+                            blocked_reason_paragraph,
+                            Center::builder(blocked_reason_area)
+                                .horizontally(false)
+                                .vertically(false)
+                                .build()
+                                .center(),
+                            buf,
+                        );
+                    }
+
+                    // render the description markup with manual scrolling
+                    if let Some(description) = description {
+                        let wrapped_lines = wrap(description, description_area.width as usize);
+                        let list_items: Vec<ListItem> = wrapped_lines
+                            .iter()
+                            .map(|line| ListItem::new(Text::from(Line::from(line.as_ref()))))
+                            .collect();
+                        let mut list_state = ListState::default();
+                        if !list_items.is_empty() {
+                            let selected_index = state
+                                .view_card_scroll_offset
+                                .min((list_items.len().saturating_sub(1)) as u16)
+                                as usize;
+                            list_state.select(Some(selected_index));
+                        }
+                        let description_list = List::new(list_items);
+                        StatefulWidget::render(
+                            description_list,
+                            Center::builder(description_area)
+                                .horizontally(false)
+                                .vertically(false)
+                                .build()
+                                .center(),
+                            buf,
+                            &mut list_state,
+                        );
+                    }
+                } else {
+                    // this should not happen, but if yes, then let user know there is no card to display
+                    let paragraph = Paragraph::new("No card to display");
+                    Widget::render(
+                        paragraph,
+                        Center::builder(area)
+                            .horizontally(true)
+                            .vertically(true)
+                            .build()
+                            .center(),
+                        buf,
+                    );
+                }
+            }
         }
     }
 }
@@ -1629,6 +1842,7 @@ mod tests {
     use chrono::{TimeZone, Utc};
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use ratatui::{buffer::Buffer, prelude::Rect};
+    use sqlx::encode::IsNull::No;
     use sqlx::sqlite::SqlitePoolOptions;
     use std::{
         collections::HashMap,
@@ -1906,9 +2120,11 @@ mod tests {
                 tokio::sync::mpsc::channel(1).0,
             )),
             board_columns: vec![],
+            card_to_view: None,
             current_column_index: 10,
             page_view: PageView::BoardDetails,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
@@ -2002,9 +2218,11 @@ mod tests {
                 tokio::sync::mpsc::channel(1).0,
             )),
             board_columns: vec![],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::BoardDetails,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: {
                 let mut state = ManageBoardColumnFormState::new();
                 fill_text_input(&mut state.name, "test");
@@ -2067,9 +2285,11 @@ mod tests {
                 },
                 vec![],
             )],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::BoardDetails,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
@@ -2128,9 +2348,11 @@ mod tests {
                 },
                 vec![],
             )],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::BoardDetails,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
@@ -2201,9 +2423,11 @@ mod tests {
                     vec![],
                 ),
             ],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::BoardDetails,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
@@ -2345,9 +2569,11 @@ mod tests {
                 tokio::sync::mpsc::channel(1).0,
             )),
             board_columns: vec![],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::ManageBoardColumn,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
@@ -2409,9 +2635,11 @@ Create new column
                 },
                 vec![],
             )],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::ConfirmDialog,
             current_action_to_confirm: ActionToConfirm::DeleteBoardColumn,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
@@ -2469,9 +2697,11 @@ Create new column
                 },
                 vec![],
             )],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::ConfirmDialog,
             current_action_to_confirm: ActionToConfirm::DeleteBoardColumn,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
@@ -2494,6 +2724,132 @@ Create new column
         assert_rendered_output(&rendered, expected_output);
 
         assert!(rendered.contains("Do you want to delete selected board column -> Todo ?",));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_manage_board_details_state_handle_event_view_card_scrolls_up_down() -> Result<()>
+    {
+        let pool = SqlitePoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        let mut state = ManageBoardDetailsState {
+            app_config: Arc::new(Mutex::new(AppConfig::default())),
+            board_service: Arc::new(BoardService::new(
+                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                tokio::sync::mpsc::channel(1).0,
+            )),
+            card_service: Arc::new(CardService::new(
+                Arc::new(CardRepo::new(Arc::new(pool))),
+                tokio::sync::mpsc::channel(1).0,
+            )),
+            notification_service: Arc::new(NotificationService::new(
+                tokio::sync::mpsc::channel(1).0,
+            )),
+            board_columns: vec![],
+            card_to_view: Some(Card {
+                id: String::from("card-1"),
+                column_id: String::from("column-1"),
+                title: String::from("View Card Title"),
+                description: Some(String::from(
+                    "Line one line two line three line four line five line six line seven line eight line nine line ten",
+                )),
+                status: String::from("Active"),
+                blocked_reason: None,
+                created_at: NaiveDateTime::from_timestamp_opt(0, 0).unwrap(),
+                started_at: None,
+                completed_at: None,
+            }),
+            current_column_index: 0,
+            page_view: PageView::ViewCard,
+            current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
+            manage_board_column_form_state: ManageBoardColumnFormState::new(),
+            manage_card_form_state: ManageCardFormState::new(vec![]),
+            confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+        };
+
+        let _ = state
+            .handle_event(Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)))
+            .unwrap();
+        assert_eq!(state.view_card_scroll_offset, 1);
+
+        let _ = state
+            .handle_event(Event::Key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)))
+            .unwrap();
+        assert_eq!(state.view_card_scroll_offset, 0);
+
+        let _ = state
+            .handle_event(Event::Key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)))
+            .unwrap();
+        assert_eq!(state.view_card_scroll_offset, 0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_manage_board_details_render_view_card_scrolls_description_in_output() -> Result<()>
+    {
+        let pool = SqlitePoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        let mut state = ManageBoardDetailsState {
+            app_config: Arc::new(Mutex::new(AppConfig::default())),
+            board_service: Arc::new(BoardService::new(
+                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                tokio::sync::mpsc::channel(1).0,
+            )),
+            card_service: Arc::new(CardService::new(
+                Arc::new(CardRepo::new(Arc::new(pool))),
+                tokio::sync::mpsc::channel(1).0,
+            )),
+            notification_service: Arc::new(NotificationService::new(
+                tokio::sync::mpsc::channel(1).0,
+            )),
+            board_columns: vec![],
+            card_to_view: Some(Card {
+                id: String::from("card-1"),
+                column_id: String::from("column-1"),
+                title: String::from("View Card Title"),
+                description: Some(String::from(
+                    "Line one Line two Line three Line four Line five",
+                )),
+                status: String::from("Active"),
+                blocked_reason: None,
+                created_at: NaiveDateTime::from_timestamp_opt(0, 0).unwrap(),
+                started_at: None,
+                completed_at: None,
+            }),
+            current_column_index: 0,
+            page_view: PageView::ViewCard,
+            current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
+            manage_board_column_form_state: ManageBoardColumnFormState::new(),
+            manage_card_form_state: ManageCardFormState::new(vec![]),
+            confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+        };
+
+        let area = Rect::new(0, 0, 20, 6);
+        let mut buf = Buffer::empty(area);
+        let widget = ManageBoardDetails::new();
+
+        widget.render(area, &mut buf, &mut state);
+        let rendered0 = buffer_to_string(&buf);
+
+        assert!(rendered0.contains("Line one"));
+        assert!(rendered0.contains("Line two"));
+
+        state.view_card_scroll_offset = 4;
+        let mut buf = Buffer::empty(area);
+        let widget = ManageBoardDetails::new();
+        widget.render(area, &mut buf, &mut state);
+        let rendered1 = buffer_to_string(&buf);
+
+        assert!(rendered1.contains("Line five"));
+        assert_ne!(rendered0, rendered1);
+
         Ok(())
     }
 
@@ -2738,9 +3094,11 @@ Create new column
                 tokio::sync::mpsc::channel(1).0,
             )),
             board_columns: vec![],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::BoardDetails,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: {
                 let mut state = ManageCardFormState::new(vec![BoardColumn {
@@ -2888,9 +3246,11 @@ Create new column
                 },
                 vec![],
             )],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::ManageCard,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![BoardColumn {
                 id: String::from("column-1"),
@@ -2976,9 +3336,11 @@ Create new card
                 },
                 vec![],
             )],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::ManageCard,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![BoardColumn {
                 id: String::from("column-1"),
@@ -3076,9 +3438,11 @@ Create new card
                     completed_at: None,
                 }],
             )],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::ConfirmDialog,
             current_action_to_confirm: ActionToConfirm::DeleteCard,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
@@ -3172,9 +3536,11 @@ Create new card
                 },
                 vec![],
             )],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::ConfirmDialog,
             current_action_to_confirm: ActionToConfirm::DeleteBoardColumn,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
@@ -3260,9 +3626,11 @@ Create new card
                     },
                 ],
             )],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::BoardDetails,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
@@ -3304,9 +3672,11 @@ Create new card
                 tokio::sync::mpsc::channel(1).0,
             )),
             board_columns: vec![],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::BoardDetails,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
@@ -3336,9 +3706,11 @@ Create new card
                 tokio::sync::mpsc::channel(1).0,
             )),
             board_columns: vec![],
+            card_to_view: None,
             current_column_index: 4,
             page_view: PageView::BoardDetails,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
@@ -3386,9 +3758,11 @@ Create new card
                 },
                 vec![],
             )],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::BoardDetails,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
@@ -3488,9 +3862,11 @@ Create new card
                 },
                 vec![original_card.clone()],
             )],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::BoardDetails,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
@@ -3642,9 +4018,11 @@ Create new card
                 tokio::sync::mpsc::channel(1).0,
             )),
             board_columns: vec![],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::ManageBoardColumn,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
@@ -3679,9 +4057,11 @@ Create new card
                 tokio::sync::mpsc::channel(1).0,
             )),
             board_columns: vec![],
+            card_to_view: None,
             current_column_index: 0,
             page_view: PageView::ManageCard,
             current_action_to_confirm: ActionToConfirm::NoAction,
+            view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
