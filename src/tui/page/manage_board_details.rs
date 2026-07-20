@@ -11,9 +11,8 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style, Stylize},
     text::{Line, Text},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, StatefulWidget, Widget},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, StatefulWidget, Widget, Wrap},
 };
-use textwrap::wrap;
 use tracing::debug;
 
 use crate::{
@@ -1674,8 +1673,8 @@ impl StatefulWidget for ManageBoardDetails {
                         blocked_reason,
                         description,
                         created_at,
-                        started_at,
-                        completed_at,
+                        started_at: _,
+                        completed_at: _,
                         id: _id,
                         column_id: _column_id,
                     } = card;
@@ -1783,31 +1782,21 @@ impl StatefulWidget for ManageBoardDetails {
                         );
                     }
 
-                    // render the description markup with manual scrolling
+                    // render the description markup as markdown with scroll support
                     if let Some(description) = description {
-                        let wrapped_lines = wrap(description, description_area.width as usize);
-                        let list_items: Vec<ListItem> = wrapped_lines
-                            .iter()
-                            .map(|line| ListItem::new(Text::from(Line::from(line.as_ref()))))
-                            .collect();
-                        let mut list_state = ListState::default();
-                        if !list_items.is_empty() {
-                            let selected_index = state
-                                .view_card_scroll_offset
-                                .min((list_items.len().saturating_sub(1)) as u16)
-                                as usize;
-                            list_state.select(Some(selected_index));
-                        }
-                        let description_list = List::new(list_items);
-                        StatefulWidget::render(
-                            description_list,
+                        let description_markup_text =
+                            the_other_tui_markdown::into_text(description);
+                        let description_paragraph = Paragraph::new(description_markup_text)
+                            .wrap(Wrap { trim: true })
+                            .scroll((state.view_card_scroll_offset, 0));
+                        Widget::render(
+                            description_paragraph,
                             Center::builder(description_area)
                                 .horizontally(false)
                                 .vertically(false)
                                 .build()
                                 .center(),
                             buf,
-                            &mut list_state,
                         );
                     }
                 } else {
@@ -1839,10 +1828,9 @@ mod tests {
     use crate::test_helpers::buffer::{assert_rendered_output, buffer_to_string};
     use crate::tui::components::notification_panel::NotificationMessage;
     use anyhow::Result;
-    use chrono::{TimeZone, Utc};
+    use chrono::{DateTime, TimeZone, Utc};
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use ratatui::{buffer::Buffer, prelude::Rect};
-    use sqlx::encode::IsNull::No;
     use sqlx::sqlite::SqlitePoolOptions;
     use std::{
         collections::HashMap,
@@ -2757,7 +2745,7 @@ Create new column
                 )),
                 status: String::from("Active"),
                 blocked_reason: None,
-                created_at: NaiveDateTime::from_timestamp_opt(0, 0).unwrap(),
+                created_at: DateTime::from_timestamp(0, 0).unwrap().naive_utc(),
                 started_at: None,
                 completed_at: None,
             }),
@@ -2818,7 +2806,7 @@ Create new column
                 )),
                 status: String::from("Active"),
                 blocked_reason: None,
-                created_at: NaiveDateTime::from_timestamp_opt(0, 0).unwrap(),
+                created_at: DateTime::from_timestamp(0, 0).unwrap().naive_utc(),
                 started_at: None,
                 completed_at: None,
             }),
@@ -2841,13 +2829,13 @@ Create new column
         assert!(rendered0.contains("Line one"));
         assert!(rendered0.contains("Line two"));
 
-        state.view_card_scroll_offset = 4;
+        state.view_card_scroll_offset = 1;
         let mut buf = Buffer::empty(area);
         let widget = ManageBoardDetails::new();
         widget.render(area, &mut buf, &mut state);
         let rendered1 = buffer_to_string(&buf);
 
-        assert!(rendered1.contains("Line five"));
+        assert!(rendered1.contains("Line three"));
         assert_ne!(rendered0, rendered1);
 
         Ok(())
