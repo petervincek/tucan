@@ -35,7 +35,10 @@ use crate::{
             BoardEvent, CardEvent,
         },
         handler::include_delegated_event_controls,
-        page::common::{Center, EventHandler},
+        page::{
+            common::{Center, EventHandler},
+            manage_board_details::PageView::{BoardDetails, ViewCard},
+        },
         service::{board::BoardService, card::CardService, notifications::NotificationService},
     },
 };
@@ -864,7 +867,7 @@ impl StatefulWidget for ManageBoardColumnForm {
 
 /// `PageView` represents the specific view page (it's part of navigation) for `ManageBoardDetails` page
 /// according to the current application state
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum PageView {
     BoardDetails,
     ManageBoardColumn,
@@ -878,7 +881,7 @@ enum PageView {
 enum ActionToConfirm {
     NoAction,
     DeleteBoardColumn,
-    DeleteCard,
+    DeleteCard(PageView),
 }
 
 #[derive(Debug, Clone)]
@@ -1196,6 +1199,14 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                     Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)),
                     String::from("Scroll Card Down"),
                 ));
+                event_controls.push((
+                    Event::Key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)),
+                    String::from("Scroll Card Up"),
+                ));
+                event_controls.push((
+                    Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
+                    String::from("Remove this card"),
+                ));
             }
         }
         event_controls
@@ -1241,7 +1252,8 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                             let card_list_state =
                                 self.board_columns[self.current_column_index].list_state;
                             if card_list_state.selected().is_some() {
-                                self.current_action_to_confirm = ActionToConfirm::DeleteCard;
+                                self.current_action_to_confirm =
+                                    ActionToConfirm::DeleteCard(BoardDetails);
                                 self.page_view = PageView::ConfirmDialog;
                             }
                         }
@@ -1342,8 +1354,18 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                 if let Event::Key(key_event) = event {
                     match (key_event.code, key_event.modifiers) {
                         (KeyCode::Esc, KeyModifiers::NONE) => {
-                            // go back to board
-                            self.page_view = PageView::BoardDetails;
+                            // go back
+                            if let ActionToConfirm::DeleteCard(page_view) =
+                                &self.current_action_to_confirm
+                            {
+                                self.page_view = page_view.clone();
+                            } else if self.current_action_to_confirm
+                                == ActionToConfirm::DeleteBoardColumn
+                            {
+                                self.page_view = PageView::BoardDetails;
+                            } else {
+                                self.page_view = PageView::BoardDetails;
+                            }
                         }
                         (KeyCode::Up, KeyModifiers::NONE) | (KeyCode::Left, KeyModifiers::NONE) => {
                             let total_options = self.confirm_dialog_state.0.len();
@@ -1375,9 +1397,10 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                                         .board_column
                                         .id;
                                     self.board_service.delete_column_by_id(board_column_id);
+                                    self.page_view = PageView::BoardDetails;
                                     self.current_action_to_confirm = ActionToConfirm::NoAction;
-                                } else if self.current_action_to_confirm
-                                    == ActionToConfirm::DeleteCard
+                                } else if let ActionToConfirm::DeleteCard(page_view) =
+                                    &self.current_action_to_confirm
                                 {
                                     // trigger the removal of selected card, fire-and-forget approach
                                     let column_cards =
@@ -1388,9 +1411,10 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                                         let card_to_delete = &column_cards[selected_card_index];
                                         self.card_service.delete_card_by_id(&card_to_delete.id);
                                     }
+                                    self.page_view = page_view.clone();
+                                    self.card_to_view = None;
                                     self.current_action_to_confirm = ActionToConfirm::NoAction;
                                 }
-                                self.page_view = PageView::BoardDetails;
                             } else {
                                 // go back to board
                                 self.page_view = PageView::BoardDetails;
@@ -1475,6 +1499,16 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                         (KeyCode::Down, KeyModifiers::NONE) => {
                             self.view_card_scroll_offset =
                                 self.view_card_scroll_offset.saturating_add(1);
+                        }
+                        (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
+                            debug!("Handling removing of selected card from PageView::ViewCard");
+                            let card_list_state =
+                                self.board_columns[self.current_column_index].list_state;
+                            if card_list_state.selected().is_some() {
+                                self.current_action_to_confirm =
+                                    ActionToConfirm::DeleteCard(ViewCard);
+                                self.page_view = PageView::ConfirmDialog;
+                            }
                         }
                         _ => {}
                     }
@@ -1626,7 +1660,9 @@ impl StatefulWidget for ManageBoardDetails {
                         buf,
                         confirm_dialog_state,
                     );
-                } else if state.current_action_to_confirm == ActionToConfirm::DeleteCard {
+                } else if let ActionToConfirm::DeleteCard(_page_view) =
+                    &state.current_action_to_confirm
+                {
                     let card_list_state =
                         &state.board_columns[state.current_column_index].list_state;
                     if let Some(selected_index) = card_list_state.selected() {
@@ -1806,7 +1842,7 @@ impl StatefulWidget for ManageBoardDetails {
                         paragraph,
                         Center::builder(area)
                             .horizontally(true)
-                            .vertically(true)
+                            .vertically(false)
                             .build()
                             .center(),
                         buf,
@@ -2489,6 +2525,8 @@ mod tests {
             )))
             .unwrap();
 
+        let page_view = state.page_view.clone();
+        println!("page_view: {page_view:?}");
         assert!(matches!(state.page_view, PageView::BoardDetails));
         let event = event_receiver
             .recv()
@@ -3173,7 +3211,7 @@ Create new column
         let mut list_state = ListState::default();
         list_state.select(Some(0));
         state.page_view = PageView::ConfirmDialog;
-        state.current_action_to_confirm = ActionToConfirm::DeleteCard;
+        state.current_action_to_confirm = ActionToConfirm::DeleteCard(BoardDetails);
         state.board_columns = vec![BoardColumnWithCards::new(
             created_column.clone(),
             vec![created_card.clone()],
@@ -3192,6 +3230,166 @@ Create new column
             .unwrap();
 
         assert!(matches!(state.page_view, PageView::BoardDetails));
+        let event = card_event_receiver
+            .recv()
+            .await
+            .expect("expected card deleted event");
+        assert!(matches!(event, AppEvent::Card(CardEvent::CardDeleted(_))));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_manage_board_details_state_handle_event_ctrl_r_in_view_card_enters_confirm_dialog()
+    -> Result<()> {
+        let temp_dir = tempdir()?;
+        let db_file = temp_dir
+            .path()
+            .join("manage_board_details_view_card_confirm.db");
+        let (board_service, mut board_event_receiver) = make_board_service(&db_file).await?;
+        let (card_service, mut card_event_receiver) = make_card_service(&db_file).await?;
+        let (notification_service, _notification_receiver) = make_notification_service();
+        let app_config = make_test_app_config(&db_file);
+        let mut state = ManageBoardDetailsState::new(
+            app_config,
+            board_service.clone(),
+            card_service.clone(),
+            notification_service,
+        );
+        let _ = board_event_receiver.recv().await;
+
+        let create_column_handle =
+            board_service.create_column(NewBoardColumn::new(String::from("Todo"), 3, 0));
+        let created_column = match board_event_receiver
+            .recv()
+            .await
+            .expect("expected board column created event")
+        {
+            AppEvent::Board(BoardEvent::BoardColumnCreated(column)) => column,
+            other => panic!("expected created event, got {other:?}"),
+        };
+        create_column_handle
+            .await
+            .expect("BoardService task panicked");
+
+        let create_card_handle = card_service.create_card(NewCard::new(
+            created_column.id.clone(),
+            String::from("Card 1"),
+            Some(String::from("Description")),
+            String::from("Active"),
+            None,
+        ));
+        let created_card = match card_event_receiver
+            .recv()
+            .await
+            .expect("expected card created event")
+        {
+            AppEvent::Card(CardEvent::CardCreated(card)) => card,
+            other => panic!("expected created event, got {other:?}"),
+        };
+        create_card_handle.await.expect("CardService task panicked");
+
+        let mut list_state = ListState::default();
+        list_state.select(Some(0));
+        state.page_view = PageView::ViewCard;
+        state.card_to_view = Some(created_card.clone());
+        state.board_columns = vec![BoardColumnWithCards::new(
+            created_column.clone(),
+            vec![created_card.clone()],
+        )];
+        state.board_columns[0].list_state = list_state;
+        state.current_column_index = 0;
+
+        let _ = state
+            .handle_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('r'),
+                KeyModifiers::CONTROL,
+            )))
+            .unwrap();
+
+        assert!(matches!(state.page_view, PageView::ConfirmDialog));
+        assert_eq!(
+            state.current_action_to_confirm,
+            ActionToConfirm::DeleteCard(ViewCard)
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_manage_board_details_state_confirm_dialog_yes_deletes_selected_card_from_view_card()
+    -> Result<()> {
+        let temp_dir = tempdir()?;
+        let db_file = temp_dir
+            .path()
+            .join("manage_board_details_delete_card_view_card.db");
+        let (board_service, mut board_event_receiver) = make_board_service(&db_file).await?;
+        let (card_service, mut card_event_receiver) = make_card_service(&db_file).await?;
+        let (notification_service, _notification_receiver) = make_notification_service();
+        let app_config = make_test_app_config(&db_file);
+        let mut state = ManageBoardDetailsState::new(
+            app_config,
+            board_service.clone(),
+            card_service.clone(),
+            notification_service,
+        );
+        let _ = board_event_receiver.recv().await;
+
+        let create_column_handle =
+            board_service.create_column(NewBoardColumn::new(String::from("Todo"), 3, 0));
+        let created_column = match board_event_receiver
+            .recv()
+            .await
+            .expect("expected board column created event")
+        {
+            AppEvent::Board(BoardEvent::BoardColumnCreated(column)) => column,
+            other => panic!("expected created event, got {other:?}"),
+        };
+        create_column_handle
+            .await
+            .expect("BoardService task panicked");
+
+        let create_card_handle = card_service.create_card(NewCard::new(
+            created_column.id.clone(),
+            String::from("Card 1"),
+            Some(String::from("Description")),
+            String::from("Active"),
+            None,
+        ));
+        let created_card = match card_event_receiver
+            .recv()
+            .await
+            .expect("expected card created event")
+        {
+            AppEvent::Card(CardEvent::CardCreated(card)) => card,
+            other => panic!("expected created event, got {other:?}"),
+        };
+        create_card_handle.await.expect("CardService task panicked");
+
+        let mut list_state = ListState::default();
+        list_state.select(Some(0));
+        state.page_view = PageView::ConfirmDialog;
+        state.current_action_to_confirm = ActionToConfirm::DeleteCard(ViewCard);
+        state.card_to_view = Some(created_card.clone());
+        state.board_columns = vec![BoardColumnWithCards::new(
+            created_column.clone(),
+            vec![created_card.clone()],
+        )];
+        state.board_columns[0].list_state = list_state;
+        state.current_column_index = 0;
+        state.confirm_dialog_state.1.selected_index = 0;
+
+        let _ = state
+            .handle_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .unwrap();
+
+        assert!(matches!(state.page_view, PageView::ViewCard));
+        assert!(state.card_to_view.is_none());
+        assert_eq!(state.current_action_to_confirm, ActionToConfirm::NoAction);
+
         let event = card_event_receiver
             .recv()
             .await
@@ -3429,7 +3627,7 @@ Create new card
             card_to_view: None,
             current_column_index: 0,
             page_view: PageView::ConfirmDialog,
-            current_action_to_confirm: ActionToConfirm::DeleteCard,
+            current_action_to_confirm: ActionToConfirm::DeleteCard(BoardDetails),
             view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
