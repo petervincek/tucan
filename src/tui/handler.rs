@@ -39,6 +39,8 @@ use crate::{
     },
 };
 
+type AppEventHandler = Box<dyn Fn(AppEvent) -> Result<()> + Send + Sync>;
+
 /// `AppPage` enum represents all the application state (pages)
 /// that can be rendered and are supported, idea is to use this as
 /// a way to navigate between different TUI pages and features
@@ -425,7 +427,7 @@ pub fn create_config_service(
     event_bus: &EventBus<AppEvent>,
 ) -> (
     Arc<Mutex<ConfigService>>,
-    impl FnOnce(Box<dyn Fn(AppEvent) -> Result<()> + Send + Sync>) + Send + 'static,
+    impl FnOnce(AppEventHandler) + Send + 'static,
 ) {
     let (config_service_sender, register_event_handler_config_service) = event_bus.create_channel();
     let config_service = Arc::new(Mutex::new(ConfigService::new(
@@ -440,7 +442,7 @@ pub fn create_board_service(
     event_bus: &EventBus<AppEvent>,
 ) -> (
     Arc<BoardService>,
-    impl FnOnce(Box<dyn Fn(AppEvent) -> Result<()> + Send + Sync>) + Send + 'static,
+    impl FnOnce(AppEventHandler) + Send + 'static,
 ) {
     let (board_service_sender, register_event_handler_board_service) = event_bus.create_channel();
     let board_service = Arc::new(BoardService::new(board_column_repo, board_service_sender));
@@ -452,7 +454,7 @@ pub fn create_card_service(
     event_bus: &EventBus<AppEvent>,
 ) -> (
     Arc<CardService>,
-    impl FnOnce(Box<dyn Fn(AppEvent) -> Result<()> + Send + Sync>) + Send + 'static,
+    impl FnOnce(AppEventHandler) + Send + 'static,
 ) {
     let (card_service_sender, register_event_handler_card_service) = event_bus.create_channel();
     let card_service = Arc::new(CardService::new(card_repo, card_service_sender));

@@ -154,12 +154,7 @@ impl ManageCardFormState {
         self.description.set_focused(false);
         self.description.set_text(
             description
-                .map(|text| {
-                    text.split("\n")
-                        .into_iter()
-                        .map(|line| line.to_string())
-                        .collect()
-                })
+                .map(|text| text.split("\n").map(|line| line.to_string()).collect())
                 .unwrap_or_default(),
         );
 
@@ -1360,16 +1355,16 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                     match (key_event.code, key_event.modifiers) {
                         (KeyCode::Esc, KeyModifiers::NONE) => {
                             // go back
-                            if let ActionToConfirm::DeleteCard(page_view) =
-                                &self.current_action_to_confirm
-                            {
-                                self.page_view = page_view.clone();
-                            } else if self.current_action_to_confirm
-                                == ActionToConfirm::DeleteBoardColumn
-                            {
-                                self.page_view = PageView::BoardDetails;
-                            } else {
-                                self.page_view = PageView::BoardDetails;
+                            match &self.current_action_to_confirm {
+                                ActionToConfirm::DeleteCard(page_view) => {
+                                    self.page_view = page_view.clone();
+                                }
+                                ActionToConfirm::DeleteBoardColumn => {
+                                    self.page_view = PageView::BoardDetails;
+                                }
+                                _ => {
+                                    self.page_view = PageView::BoardDetails;
+                                }
                             }
                         }
                         (KeyCode::Up, KeyModifiers::NONE) | (KeyCode::Left, KeyModifiers::NONE) => {
@@ -1539,6 +1534,7 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
 
 /// `ManageBoardDetails` represents the statefull widget for a page responsible for:
 /// - managing the cards of specific Kanban board and columns of Kanban Board
+#[derive(Default)]
 pub struct ManageBoardDetails {}
 
 impl ManageBoardDetails {
@@ -1740,7 +1736,7 @@ impl StatefulWidget for ManageBoardDetails {
                         maybe_blocked_reason_area,
                         description_area,
                     ) = if let Some(blocked_reason) = blocked_reason
-                        && blocked_reason.len() != 0
+                        && !blocked_reason.is_empty()
                     {
                         let vertical_layout = Layout::vertical([
                             Constraint::Length(2), // place for title
@@ -1777,7 +1773,7 @@ impl StatefulWidget for ManageBoardDetails {
                         status_created_at_area.layout(&horizontal_row_layout);
 
                     // render title
-                    let title_paragraph = Paragraph::new(format!("{title}"));
+                    let title_paragraph = Paragraph::new(title.to_string());
                     Widget::render(
                         title_paragraph,
                         Center::builder(title_area)

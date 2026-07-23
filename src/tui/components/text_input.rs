@@ -306,9 +306,9 @@ impl EventHandler<Option<String>, ()> for TextInput {
         &mut self,
         event: crossterm::event::Event,
     ) -> Result<ControlFlow<Option<String>>> {
-        match event {
-            // handle all the key events for our input widget
-            Event::Key(key_event) => match (key_event.code, key_event.modifiers) {
+        // handle all the key events for our input widget
+        if let Event::Key(key_event) = event {
+            match (key_event.code, key_event.modifiers) {
                 (KeyCode::Esc, _) => {
                     // return from the input widget, ESC is sort of cancelation of the update
                     // so do not return anything
@@ -398,9 +398,9 @@ impl EventHandler<Option<String>, ()> for TextInput {
                 _ => {
                     // ignore anything else for now
                 }
-            },
-            _ => {}
+            }
         }
+
         Ok(ControlFlow::Continue(()))
     }
 }

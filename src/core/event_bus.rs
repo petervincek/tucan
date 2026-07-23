@@ -15,6 +15,8 @@ pub struct EventBus<T> {
     channel_handlers: Arc<Mutex<Vec<ChannelHandler<T>>>>,
 }
 
+type ChannelHandlerCallback<T> = Box<dyn Fn(T) -> Result<()> + Send + Sync>;
+
 /// `ChannelHandler<T>` is a inner data struct representing the registered
 /// channel receiver and channel handler
 struct ChannelHandler<T> {
@@ -22,7 +24,15 @@ struct ChannelHandler<T> {
     receiver: Receiver<T>,
     /// `handler` is registered process/function to react and do something
     /// on received event/message
-    handler: Box<dyn Fn(T) -> Result<()> + Send + Sync>,
+    handler: ChannelHandlerCallback<T>,
+}
+
+impl<T: Debug + Send + 'static> Default for EventBus<T> {
+    fn default() -> Self {
+        Self {
+            channel_handlers: Arc::new(Mutex::new(vec![])),
+        }
+    }
 }
 
 impl<T: Debug + Send + 'static> EventBus<T> {
@@ -40,7 +50,7 @@ impl<T: Debug + Send + 'static> EventBus<T> {
         &self,
     ) -> (
         Sender<T>,
-        impl FnOnce(Box<dyn Fn(T) -> Result<()> + Send + Sync>) + Send + 'static,
+        impl FnOnce(ChannelHandlerCallback<T>) + Send + 'static,
     ) {
         let (tx, rx) = tokio::sync::mpsc::channel::<T>(8);
 
