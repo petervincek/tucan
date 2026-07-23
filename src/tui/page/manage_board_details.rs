@@ -1928,7 +1928,10 @@ mod tests {
             kanban_boards: boards,
         };
 
-        let connection = Connection::new(Arc::new(Mutex::new(config)));
+        let connection = Connection::new(
+            Arc::new(Mutex::new(config)),
+            db_path.parent().unwrap().to_path_buf(),
+        );
         let pool = connection.get_db_connection_pool().await?;
         Ok((BoardColumnRepo::new(pool.clone()), CardRepo::new(pool)))
     }

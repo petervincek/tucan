@@ -1,6 +1,7 @@
 use std::{
     collections::HashSet,
     ops::ControlFlow,
+    path::PathBuf,
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -82,8 +83,8 @@ pub struct Handler {
 impl Handler {
     /// creates the TUI pages and components, backend services and wires them together as a part of `Handler`
     /// manages the application state and the state of the navigation
-    pub async fn new(app_config: Arc<Mutex<AppConfig>>) -> Result<Self> {
-        let db_pool = Connection::new(app_config.clone())
+    pub async fn new(app_config: Arc<Mutex<AppConfig>>, config_dir: PathBuf) -> Result<Self> {
+        let db_pool = Connection::new(app_config.clone(), config_dir)
             .get_db_connection_pool()
             .await?;
         // create notification bus, notification service, notification panel

@@ -40,14 +40,15 @@ pub enum PoolError {
 
 pub struct Connection {
     pub config: Arc<Mutex<AppConfig>>,
+    pub config_dir: PathBuf,
 }
 
 /// specific result type related to `Connection` abstraction
 pub type Result<T> = std::result::Result<T, PoolError>;
 
 impl Connection {
-    pub fn new(config: Arc<Mutex<AppConfig>>) -> Self {
-        Self { config }
+    pub fn new(config: Arc<Mutex<AppConfig>>, config_dir: PathBuf) -> Self {
+        Self { config, config_dir }
     }
 
     pub fn reset_db_pool_for_tests() {
@@ -75,9 +76,17 @@ impl Connection {
             // enforcement is enabled for every pooled connection, so that referential integrity and
             // cascade behaviors work as expected throughout the application.
             let db_url = kanban_board.db_url.clone();
+            let db_url = normalize_sqlite_file_path(&db_url);
+            let db_url = if db_url.is_absolute() {
+                db_url
+            } else {
+                // in case of relative path, search/store the db file in config directory and special
+                // 'dbs' directory
+                self.config_dir.join("dbs").join(db_url)
+            };
             // let db_url = db_url.into_os_string();
             let options = SqliteConnectOptions::new()
-                .filename(normalize_sqlite_file_path(&db_url))
+                .filename(db_url)
                 .create_if_missing(true)
                 .journal_mode(SqliteJournalMode::Wal);
             // set the logging
@@ -168,7 +177,8 @@ mod tests {
         let temp_dir = tempdir()?;
         let db_file = temp_dir.path().join("tucan_test.db");
         let config = build_test_config(&db_file);
-        let connection = Connection::new(Arc::new(Mutex::new(config)));
+        let connection =
+            Connection::new(Arc::new(Mutex::new(config)), temp_dir.path().to_path_buf());
 
         let pool = connection.get_db_connection_pool().await?;
 
@@ -203,7 +213,8 @@ mod tests {
         let temp_dir = tempdir()?;
         let db_file = temp_dir.path().join("reuse_pool.db");
         let config = build_test_config(&db_file);
-        let connection = Connection::new(Arc::new(Mutex::new(config)));
+        let connection =
+            Connection::new(Arc::new(Mutex::new(config)), temp_dir.path().to_path_buf());
 
         let first_pool = connection.get_db_connection_pool().await?;
         let second_pool = connection.get_db_connection_pool().await?;
@@ -239,7 +250,8 @@ mod tests {
             logging_config: Default::default(),
             kanban_boards: boards,
         };
-        let connection = Connection::new(Arc::new(Mutex::new(config)));
+        let connection =
+            Connection::new(Arc::new(Mutex::new(config)), temp_dir.path().to_path_buf());
 
         let pool = connection.get_db_connection_pool().await?;
 
@@ -256,13 +268,15 @@ mod tests {
     #[tokio::test]
     async fn get_db_connection_pool_errors_when_current_board_is_missing() -> Result<()> {
         reset_db_pool();
+        let temp_dir = tempdir()?;
 
         let config = AppConfig {
             current_board: String::from("missing-board"),
             logging_config: Default::default(),
             kanban_boards: HashMap::new(),
         };
-        let connection = Connection::new(Arc::new(Mutex::new(config)));
+        let connection =
+            Connection::new(Arc::new(Mutex::new(config)), temp_dir.path().to_path_buf());
 
         let error = connection
             .get_db_connection_pool()

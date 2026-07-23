@@ -78,7 +78,7 @@ async fn main() -> Result<()> {
     let mut app_config = Arc::new(Mutex::new(app_config));
     let mut res: Option<Result<AppExit>> = None;
     loop {
-        match TucanApp::new(app_config.clone())
+        match TucanApp::new(app_config.clone(), config_manager.get_config_dir())
             .await?
             .run_app(&mut terminal)
         {
