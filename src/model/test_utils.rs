@@ -9,5 +9,5 @@ pub(crate) fn acquire_test_lock() -> MutexGuard<'static, ()> {
 }
 
 pub(crate) fn reset_db_pool() {
-    Connection::reset_db_pool_for_tests();
+    Connection::reset_db_pool();
 }

@@ -58,7 +58,7 @@ impl CenterBuilder {
         self
     }
 
-    pub fn vertical_constaint(&mut self, constraint: Constraint) -> &mut Self {
+    pub fn vertical_constraint(&mut self, constraint: Constraint) -> &mut Self {
         self.vertical_constraint = constraint;
         self
     }
@@ -68,7 +68,7 @@ impl CenterBuilder {
         self
     }
 
-    pub fn horizontal_constaint(&mut self, constraint: Constraint) -> &mut Self {
+    pub fn horizontal_constraint(&mut self, constraint: Constraint) -> &mut Self {
         self.horizontal_constraint = constraint;
         self
     }
@@ -168,7 +168,7 @@ mod tests {
         let mut builder = Center::builder(area);
         let center = builder
             .vertically(true)
-            .vertical_constaint(Constraint::Length(20))
+            .vertical_constraint(Constraint::Length(20))
             .build();
 
         assert!(center.vertically);
@@ -182,7 +182,7 @@ mod tests {
         let mut builder = Center::builder(area);
         let center = builder
             .horizontally(true)
-            .horizontal_constaint(Constraint::Length(80))
+            .horizontal_constraint(Constraint::Length(80))
             .build();
 
         assert!(!center.vertically);
@@ -196,8 +196,8 @@ mod tests {
         let mut builder = Center::builder(area);
         let center = builder
             .vertically(true)
-            .horizontal_constaint(Constraint::Length(70))
-            .vertical_constaint(Constraint::Length(20))
+            .horizontal_constraint(Constraint::Length(70))
+            .vertical_constraint(Constraint::Length(20))
             .horizontally(true)
             .build();
 

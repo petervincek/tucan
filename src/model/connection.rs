@@ -51,7 +51,7 @@ impl Connection {
         Self { config, config_dir }
     }
 
-    pub fn reset_db_pool_for_tests() {
+    pub fn reset_db_pool() {
         let _ = DB_POOL.lock().unwrap().take();
     }
 

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 authors = ["Peter Vincek"]
-description = "TUI Kanban boad application for managing your own tasks"
+description = "TUI Kanban board application for managing your own tasks"
 
 license = "Apache-2.0"
 

@@ -497,7 +497,7 @@ impl StatefulWidget for ManageBoards {
                     list,
                     Center::builder(area)
                         .horizontally(true)
-                        .horizontal_constaint(Constraint::Percentage(95))
+                        .horizontal_constraint(Constraint::Percentage(95))
                         .vertically(false)
                         .build()
                         .center(),

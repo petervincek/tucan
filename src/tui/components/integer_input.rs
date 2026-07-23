@@ -1,6 +1,6 @@
 use std::ops::ControlFlow;
 
-use anyhow::{Ok, Result};
+use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     layout::Alignment,

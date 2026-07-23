@@ -116,7 +116,7 @@ impl Handler {
                         debug!("Setting config service with restart");
                         config_service.lock().unwrap().request_restart(true);
                         notification_service.send_notification(NotificationMessage::InfoMsg(
-                            "Config file perstisted, restart of app requested".to_string(),
+                            "Config file persisted, restart of app requested".to_string(),
                             Instant::now(),
                         ));
                     }

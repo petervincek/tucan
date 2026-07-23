@@ -86,11 +86,14 @@ async fn main() -> Result<()> {
             Ok(AppExit::Restart) => {
                 debug!("Restarting the application");
                 // just reload the app config (with potential changes) and let to recreate the app instance
-                Connection::reset_db_pool_for_tests();
+                Connection::reset_db_pool();
                 config_manager = Arc::new(ConfigManager::default());
                 app_config = Arc::new(Mutex::new(load_app_config(&config_manager)));
             }
-            Err(error) => res = Some(Err(error)),
+            Err(error) => {
+                res = Some(Err(error));
+                break;
+            }
             _ => {}
         }
     }

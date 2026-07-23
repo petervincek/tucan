@@ -436,9 +436,9 @@ mod tests {
         let (sender, mut receiver) = mpsc::channel(1);
         let service = BoardService::new(Arc::new(repo), sender);
 
-        let handle = service.delete_column_by_id(&created.id).await;
+        let handle = service.delete_column_by_id(&created.id);
         let event = receive_event(&mut receiver).await;
-        handle.expect("BoardService task panicked");
+        handle.await.expect("BoardService task panicked");
 
         match event {
             AppEvent::Board(BoardEvent::BoardColumnDeleted(column_id)) => {

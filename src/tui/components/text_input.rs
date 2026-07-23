@@ -368,7 +368,7 @@ impl EventHandler<Option<String>, ()> for TextInput {
                     self.cursor_position = 0;
                 }
                 (KeyCode::End, _) => {
-                    self.cursor_position = self.buffer.len();
+                    self.cursor_position = self.char_count();
                 }
                 (KeyCode::Char(c), modifiers) if !modifiers.contains(KeyModifiers::CONTROL) => {
                     // Accept any typed character, including uppercase, shifted punctuation, and Alt-modified input.
