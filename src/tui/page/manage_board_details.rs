@@ -73,8 +73,6 @@ struct ManageCardFormState {
     status: (Vec<Choice<CardStatus>>, ChoicePickerState), // widget for capturing the status of Kanban Card
     blocked_reason: TextInput, // widget for capturing the reason of Kanban Card being blocked
     current_field: ManageCardFormField,
-    // state
-    board_columns: Vec<BoardColumn>,
 }
 
 impl ManageCardFormState {
@@ -118,7 +116,6 @@ impl ManageCardFormState {
             status: (status_choices, status_choice_picker_state),
             blocked_reason: blocked_reason_input,
             current_field: ManageCardFormField::ColumnId,
-            board_columns,
         }
     }
 
@@ -172,7 +169,7 @@ impl ManageCardFormState {
         status_choice_picker_state.selected_index = status_choices
             .iter()
             .enumerate()
-            .find(|(index, choice)| choice.label == status)
+            .find(|(_index, choice)| choice.label == status)
             .unwrap()
             .0;
 
@@ -871,7 +868,7 @@ impl StatefulWidget for ManageBoardColumnForm {
 enum PageView {
     BoardDetails,
     ManageBoardColumn,
-    ManageCard,
+    ManageCard { coming_from: Box<PageView> },
     ViewCard,
     ConfirmDialog,
 }
@@ -1052,12 +1049,13 @@ impl ManageBoardDetailsState {
                 }
             }
             AppEvent::Card(CardEvent::CardFetched(fetched_card)) => {
+                let card_id = &fetched_card.id;
                 debug!("Card fetched");
-                let column_id = fetched_card.column_id.clone();
                 for board_column_with_cards in &mut self.board_columns {
-                    if board_column_with_cards.board_column.id == column_id {
-                        // TODO: maybe in cause of existing card we should replace the card in the column rathe than push
-                        // in order to eliminate duplicates
+                    board_column_with_cards
+                        .cards
+                        .retain(|card| card.id != *card_id);
+                    if board_column_with_cards.board_column.id == fetched_card.column_id {
                         board_column_with_cards.cards.push(fetched_card.clone());
                     }
                 }
@@ -1084,6 +1082,7 @@ impl ManageBoardDetailsState {
                         board_column_with_cards.cards.push(updated_card.clone());
                     }
                 }
+                self.card_to_view = Some(updated_card.clone());
                 self.notification_service
                     .send_notification(NotificationMessage::InfoMsg(
                         format!("Card updated, id: {card_id}"),
@@ -1176,7 +1175,7 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                     String::from("Confirm selection"),
                 ));
             }
-            PageView::ManageCard => {
+            PageView::ManageCard { coming_from: _ } => {
                 event_controls.push((
                     Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
                     String::from("Go Back to Board List"),
@@ -1207,13 +1206,17 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                     Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
                     String::from("Remove this card"),
                 ));
+                event_controls.push((
+                    Event::Key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::CONTROL)),
+                    String::from("Edit this card"),
+                ));
             }
         }
         event_controls
     }
 
     fn handle_event(&mut self, event: Event) -> Result<ControlFlow<(), ()>> {
-        match self.page_view {
+        match &self.page_view {
             PageView::BoardDetails => {
                 if let Event::Key(key_event) = event {
                     match (key_event.code, key_event.modifiers) {
@@ -1225,7 +1228,9 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                         (KeyCode::Char('k'), KeyModifiers::CONTROL) => {
                             debug!("Handling the manage card [create new card]");
                             self.manage_card_form_state.clear(); // clear the form
-                            self.page_view = PageView::ManageCard;
+                            self.page_view = PageView::ManageCard {
+                                coming_from: Box::new(PageView::BoardDetails),
+                            };
                         }
                         (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
                             debug!("Handling the manage board column [update existing column]");
@@ -1424,17 +1429,18 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                     }
                 }
             }
-            PageView::ManageCard => {
+            PageView::ManageCard { coming_from } => {
                 if let Event::Key(key_event) = event {
                     match (key_event.code, key_event.modifiers) {
                         (KeyCode::Esc, KeyModifiers::NONE) => {
-                            // go back to board
-                            self.page_view = PageView::BoardDetails;
+                            // go back to the previous page (coming_from)
+                            // how to navigate from create vs. update/edit - comming from will contain the state
+                            self.page_view = *coming_from.clone();
                         }
                         _ => {
                             // delegate the event to the underlying state
                             let result = self.manage_card_form_state.handle_event(event)?;
-                            // TODO: based on the result decide if to create or update a card
+                            // based on the result decide if to create or update a card
                             if let ControlFlow::Break((
                                 card_id,
                                 column_id,
@@ -1508,6 +1514,18 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                                 self.current_action_to_confirm =
                                     ActionToConfirm::DeleteCard(ViewCard);
                                 self.page_view = PageView::ConfirmDialog;
+                            }
+                        }
+                        (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
+                            debug!("Handling the manage/edit card [update existing card]");
+                            // enter edit mode just in case there is some card
+                            if let Some(card) = self.card_to_view.clone() {
+                                self.manage_card_form_state.clear(); // clear the form
+                                // preset the form with existing data from selected card
+                                self.manage_card_form_state.preset_with_card_data(card);
+                                self.page_view = PageView::ManageCard {
+                                    coming_from: Box::new(PageView::ViewCard),
+                                };
                             }
                         }
                         _ => {}
@@ -1695,7 +1713,7 @@ impl StatefulWidget for ManageBoardDetails {
                     }
                 }
             }
-            PageView::ManageCard => {
+            PageView::ManageCard { coming_from: _ } => {
                 // render the manage card form
                 let manage_card_form = ManageCardForm::new();
                 let manage_card_form_state = &mut state.manage_card_form_state;
@@ -3151,7 +3169,10 @@ Create new column
             )))
             .unwrap();
 
-        assert!(matches!(state.page_view, PageView::ManageCard));
+        assert!(matches!(
+            state.page_view,
+            PageView::ManageCard { coming_from: _ }
+        ));
         assert!(state.manage_card_form_state.title.get_buffer().is_empty());
         assert!(matches!(
             state.manage_card_form_state.current_field,
@@ -3434,7 +3455,9 @@ Create new column
             )],
             card_to_view: None,
             current_column_index: 0,
-            page_view: PageView::ManageCard,
+            page_view: PageView::ManageCard {
+                coming_from: Box::new(PageView::BoardDetails),
+            },
             current_action_to_confirm: ActionToConfirm::NoAction,
             view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
@@ -3524,7 +3547,9 @@ Create new card
             )],
             card_to_view: None,
             current_column_index: 0,
-            page_view: PageView::ManageCard,
+            page_view: PageView::ManageCard {
+                coming_from: Box::new(PageView::BoardDetails),
+            },
             current_action_to_confirm: ActionToConfirm::NoAction,
             view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
@@ -4164,7 +4189,9 @@ Create new card
             other => panic!("expected created event, got {other:?}"),
         };
 
-        state.page_view = PageView::ManageCard;
+        state.page_view = PageView::ManageCard {
+            coming_from: Box::new(PageView::BoardDetails),
+        };
         state.manage_card_form_state = ManageCardFormState::new(vec![created_column.clone()]);
         fill_text_input(&mut state.manage_card_form_state.title, "New Card");
 
@@ -4245,7 +4272,9 @@ Create new card
             board_columns: vec![],
             card_to_view: None,
             current_column_index: 0,
-            page_view: PageView::ManageCard,
+            page_view: PageView::ManageCard {
+                coming_from: Box::new(PageView::BoardDetails),
+            },
             current_action_to_confirm: ActionToConfirm::NoAction,
             view_card_scroll_offset: 0,
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
