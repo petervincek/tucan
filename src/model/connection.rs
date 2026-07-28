@@ -82,7 +82,18 @@ impl Connection {
             } else {
                 // in case of relative path, search/store the db file in config directory and special
                 // 'dbs' directory
-                self.config_dir.join("dbs").join(db_url)
+                let dbs_dir = self.config_dir.join("dbs");
+                if !dbs_dir.exists() {
+                    // create the dbs directory if does not exist
+                    std::fs::create_dir_all(&dbs_dir).map_err(|err| {
+                        PoolError::ConnectionNotInitialized {
+                            reason: format!(
+                                "failed to create dbs directory at {dbs_dir:?}: {err:?}"
+                            ),
+                        }
+                    })?;
+                }
+                dbs_dir.join(db_url)
             };
             // let db_url = db_url.into_os_string();
             let options = SqliteConnectOptions::new()
