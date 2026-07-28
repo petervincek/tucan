@@ -1,0 +1,235 @@
+# Production release workflow for tucan.
+#
+# Intent:
+# - Build release binaries for common OS/CPU targets.
+# - Package each binary with a predictable artifact name.
+# - Publish assets to a GitHub Release when a version tag is pushed.
+# - Attach checksums for integrity verification.
+# - Optionally sign checksums and emit build provenance for supply-chain trust.
+
+name: Rust Release
+
+on:
+  # User-friendly release pattern: push a semantic version tag to publish binaries.
+  push:
+    tags:
+      - "v*.*.*"
+  # Manual trigger for exceptional release scenarios.
+  workflow_dispatch:
+
+# Permissions are intentionally explicit.
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+env:
+  APP_NAME: tucan
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release-gate:
+    name: Enforce release safety gates
+    runs-on: ubuntu-22.04
+    outputs:
+      allow_release: ${{ steps.gate.outputs.allow_release }}
+      prerelease: ${{ steps.gate.outputs.prerelease }}
+      reason: ${{ steps.gate.outputs.reason }}
+
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify tag and enforce branch policy
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_REF_NAME}"
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+
+          # SemVer prerelease tags contain a '-' suffix (e.g., v1.2.3-rc.1).
+          if [[ "$TAG" == *-* ]]; then
+            echo "allow_release=true" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "reason=Prerelease tag detected; allowed from feature branches." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Stable tags are allowed only when the tagged commit is on default branch lineage.
+          git fetch --no-tags origin "$DEFAULT_BRANCH"
+          if git merge-base --is-ancestor "$GITHUB_SHA" "origin/$DEFAULT_BRANCH"; then
+            echo "allow_release=true" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "reason=Stable tag points to default branch lineage." >> "$GITHUB_OUTPUT"
+          else
+            echo "allow_release=false" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "reason=Stable tag does not point to default branch lineage; blocked by safety gate." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Emit gate decision
+        shell: bash
+        run: |
+          echo "Release gate decision: ${{ steps.gate.outputs.reason }}"
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: release-gate
+    if: ${{ needs.release-gate.outputs.allow_release == 'true' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Compatibility strategy: Linux x64 baseline build.
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            archive_ext: tar.gz
+            bin_name: tucan
+
+          # Compatibility strategy: macOS Intel build.
+          - os: macos-13
+            target: x86_64-apple-darwin
+            archive_ext: tar.gz
+            bin_name: tucan
+
+          # Compatibility strategy: macOS Apple Silicon build.
+          - os: macos-14
+            target: aarch64-apple-darwin
+            archive_ext: tar.gz
+            bin_name: tucan
+
+          # Compatibility strategy: Windows x64 build.
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            archive_ext: zip
+            bin_name: tucan.exe
+
+          # Optional future matrix entry (disabled for now): Linux ARM64.
+          # - os: ubuntu-22.04
+          #   target: aarch64-unknown-linux-gnu
+          #   archive_ext: tar.gz
+          #   bin_name: tucan
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        env:
+          # Expose release identity inside the binary for in-app version display.
+          TUCAN_GIT_TAG: ${{ github.ref_name }}
+          TUCAN_GIT_SHA: ${{ github.sha }}
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package release archive (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME}"
+          ASSET_BASE="${APP_NAME}-${VERSION}-${{ matrix.target }}"
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "dist/${{ matrix.bin_name }}"
+          tar -C dist -czf "${ASSET_BASE}.${{ matrix.archive_ext }}" "${{ matrix.bin_name }}"
+          shasum -a 256 "${ASSET_BASE}.${{ matrix.archive_ext }}" > "${ASSET_BASE}.${{ matrix.archive_ext }}.sha256"
+
+      - name: Package release archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $Version = "${env:GITHUB_REF_NAME}"
+          $AssetBase = "${env:APP_NAME}-$Version-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "dist/${{ matrix.bin_name }}"
+          Compress-Archive -Path "dist/${{ matrix.bin_name }}" -DestinationPath "$AssetBase.${{ matrix.archive_ext }}" -Force
+          (Get-FileHash "$AssetBase.${{ matrix.archive_ext }}" -Algorithm SHA256).Hash + "  " + "$AssetBase.${{ matrix.archive_ext }}" | Out-File "$AssetBase.${{ matrix.archive_ext }}.sha256" -Encoding ascii
+
+      - name: Upload packaged artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: |
+            ${{ env.APP_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}
+            ${{ env.APP_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}.sha256
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-22.04
+    needs:
+      - release-gate
+      - build
+    if: ${{ needs.release-gate.outputs.allow_release == 'true' }}
+
+    steps:
+      - name: Download all built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create consolidated checksums file
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat release-assets/*.sha256 > release-assets/checksums.txt
+
+      - name: Sign checksums (cosign keyless)
+        # Security strategy: sign the checksum manifest via GitHub OIDC identity.
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sSfL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 -o cosign
+          chmod +x cosign
+          ./cosign sign-blob --yes \
+            --bundle release-assets/checksums.txt.bundle \
+            --output-certificate release-assets/checksums.txt.pem \
+            --output-signature release-assets/checksums.txt.sig \
+            release-assets/checksums.txt
+
+      - name: Generate provenance attestation
+        # Security strategy: attach build provenance to improve trust and auditability.
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: release-assets/*
+
+      - name: Publish release assets
+        # User-friendly distribution pattern: users download the matching OS/arch artifact from Releases.
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/*
+          draft: false
+          prerelease: ${{ needs.release-gate.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          body: |
+            Prebuilt production binaries for tucan.
+
+            Pick the asset matching your target machine:
+            - Linux x64: x86_64-unknown-linux-gnu
+            - macOS Intel: x86_64-apple-darwin
+            - macOS Apple Silicon: aarch64-apple-darwin
+            - Windows x64: x86_64-pc-windows-msvc
+
+            Integrity verification:
+            - Download checksums.txt
+            - Verify archive checksum before running
+
+            Example (macOS/Linux):
+            shasum -a 256 -c checksums.txt
+
+            Example (Windows PowerShell):
+            Get-FileHash <archive> -Algorithm SHA256

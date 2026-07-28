@@ -17,6 +17,7 @@ use tracing::debug;
 
 use crate::{
     core::{
+        build_info::display_app_version,
         config::{AppConfig, ConfigManager},
         event_bus::EventBus,
     },
@@ -73,6 +74,7 @@ pub struct Handler {
     // inner state of the app
     current_page: AppPage,
     is_notification_panel_visible: bool,
+    app_version_label: String,
     // some widgets
     notification_panel: Arc<Mutex<NotificationPanel>>,
     // some state for statefull widget
@@ -174,6 +176,7 @@ impl Handler {
             notification_bus,
             current_page: AppPage::KanbanBoards,
             is_notification_panel_visible: true,
+            app_version_label: display_app_version(),
             notification_panel,
             manage_boards_state: ManageBoardsState::new(app_config, config_service.clone()),
             manage_board_details_state,
@@ -212,12 +215,14 @@ impl Handler {
             first_column_area.layout(&vertical_layout);
 
         // render the header
-        let header = &mut Header::new(String::from(
+        let app_version = &self.app_version_label;
+        let header_content = format!(
             r#" _____ _   _  ___   _   _  _         _____ _   _ ___   _  __          _               
 |_   _| | | |/ __| /_\ | \| |  ___  |_   _| | | |_ _| | |/ /__ _ _ _ | |__  __ _ _ _  
   | | | |_| | (__ / _ \| .` | |___|   | | | |_| || |  | ' </ _` | ' \| '_ \/ _` | ' \ 
-  |_|  \___/ \___/_/ \_\_|\_|         |_|  \___/|___| |_|\_\__,_|_||_|_.__/\__,_|_||_|"#,
-        ));
+  |_|  \___/ \___/_/ \_\_|\_|         |_|  \___/|___| |_|\_\__,_|_||_|_.__/\__,_|_||_| {app_version}"#,
+        );
+        let header = &mut Header::new(header_content);
         f.render_widget(header, header_area);
 
         // common event controls
