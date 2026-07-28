@@ -19,16 +19,16 @@ fn short_sha(sha: &str) -> &str {
 pub fn display_app_version() -> String {
     let mut parts: Vec<String> = Vec::new();
 
-    if let Some(tag) = GIT_TAG {
-        if !tag.is_empty() {
-            parts.push(tag.to_string());
-        }
+    if let Some(tag) = GIT_TAG
+        && !tag.is_empty()
+    {
+        parts.push(tag.to_string());
     }
 
-    if let Some(sha) = GIT_SHA {
-        if !sha.is_empty() {
-            parts.push(short_sha(sha).to_string());
-        }
+    if let Some(sha) = GIT_SHA
+        && !sha.is_empty()
+    {
+        parts.push(short_sha(sha).to_string());
     }
 
     if parts.is_empty() {
