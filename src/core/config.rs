@@ -10,15 +10,19 @@ type BoardId = String;
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct AppConfig {
     pub current_board: BoardId,
+    #[serde(default)]
     pub logging_config: LoggingConfig,
     pub kanban_boards: HashMap<BoardId, KanbanBoard>,
 }
 
 /// `LoggingConfig` contains logging specific configuration
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(default)]
 pub struct LoggingConfig {
     pub log_file_name: String,
     pub log_level: String,
+    pub max_log_files: usize,
+    pub max_log_file_size_mb: usize,
 }
 
 /// Provides default starting values for logging configuration
@@ -27,6 +31,8 @@ impl Default for LoggingConfig {
         Self {
             log_file_name: String::from("tucan.log"),
             log_level: String::from("info"),
+            max_log_files: 14,
+            max_log_file_size_mb: 10,
         }
     }
 }
