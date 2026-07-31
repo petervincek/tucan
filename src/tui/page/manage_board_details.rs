@@ -1933,7 +1933,10 @@ mod tests {
             db_path.parent().unwrap().to_path_buf(),
         );
         let pool = connection.get_db_connection_pool().await?;
-        Ok((BoardColumnRepo::new(pool.clone()), CardRepo::new(pool)))
+        Ok((
+            BoardColumnRepo::new(pool.clone()),
+            CardRepo::new(pool.clone(), Arc::new(BoardColumnRepo::new(pool.clone()))),
+        ))
     }
 
     async fn make_board_service(
@@ -2147,14 +2150,15 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2245,14 +2249,15 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2299,14 +2304,15 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2362,14 +2368,15 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2421,14 +2428,15 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2598,14 +2606,15 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2651,14 +2660,15 @@ Create new column
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2713,14 +2723,15 @@ Create new column
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2777,14 +2788,15 @@ Create new column
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2838,14 +2850,15 @@ Create new column
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3123,14 +3136,15 @@ Create new column
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3425,14 +3439,15 @@ Create new column
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3517,14 +3532,15 @@ Create new card
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3607,14 +3623,15 @@ Create new card
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3719,14 +3736,15 @@ Create new card
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3778,14 +3796,15 @@ Create new card
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3868,14 +3887,15 @@ Create new card
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3902,14 +3922,15 @@ Create new card
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3941,14 +3962,18 @@ Create new card
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(second_pool.clone()))),
+                Arc::new(CardRepo::new(
+                    Arc::new(second_pool.clone()),
+                    board_column_repo,
+                )),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -4045,14 +4070,18 @@ Create new card
             started_at: None,
             completed_at: None,
         };
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(second_pool.clone()))),
+                Arc::new(CardRepo::new(
+                    Arc::new(second_pool.clone()),
+                    board_column_repo,
+                )),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -4216,14 +4245,15 @@ Create new card
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -4255,14 +4285,15 @@ Create new card
             .connect("sqlite::memory:")
             .await
             .unwrap();
+        let board_column_repo = Arc::new(BoardColumnRepo::new(Arc::new(pool.clone())));
         let mut state = ManageBoardDetailsState {
             app_config: Arc::new(Mutex::new(AppConfig::default())),
             board_service: Arc::new(BoardService::new(
-                Arc::new(BoardColumnRepo::new(Arc::new(pool.clone()))),
+                board_column_repo.clone(),
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool))),
+                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
