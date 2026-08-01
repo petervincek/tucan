@@ -236,7 +236,7 @@ impl CardRepo {
     async fn try_create_card(&self, card: NewCard) -> Result<Card> {
         let mut tx = self.pool.begin().await?;
         let capacity = self
-            .load_column_capacity(&mut *tx, &card.column_id, None)
+            .load_column_capacity(&mut tx, &card.column_id, None)
             .await?;
         let _capacity = check_wip_limit(capacity, None)?;
 
@@ -300,7 +300,7 @@ impl CardRepo {
     async fn try_update_card(&self, card: Card) -> Result<Card> {
         let mut tx = self.pool.begin().await?;
         let capacity = self
-            .load_column_capacity(&mut *tx, &card.column_id, Some(&card.id))
+            .load_column_capacity(&mut tx, &card.column_id, Some(&card.id))
             .await?;
         let _capacity = check_wip_limit(capacity, Some(card.id.clone()))?;
 

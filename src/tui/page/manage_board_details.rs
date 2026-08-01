@@ -1340,7 +1340,7 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                             );
                             let board_column =
                                 &self.board_columns[self.current_column_index].board_column;
-                            for (_card_id, marked_card) in &self.marked_cards {
+                            for marked_card in self.marked_cards.values() {
                                 let mut card_to_update = marked_card.clone();
                                 card_to_update.column_id = board_column.id.clone();
                                 self.card_service.update_card(card_to_update);
