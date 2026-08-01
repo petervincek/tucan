@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     ops::ControlFlow,
     sync::{Arc, Mutex},
     time::Instant,
@@ -893,6 +894,8 @@ impl BoardColumnWithCards {
     }
 }
 
+type CardId = String;
+
 /// `ManageBoardDetailsState` represents the state for statefull widget `ManageBoardDetails`
 #[derive(Clone)]
 pub struct ManageBoardDetailsState {
@@ -910,6 +913,7 @@ pub struct ManageBoardDetailsState {
     manage_board_column_form_state: ManageBoardColumnFormState,
     manage_card_form_state: ManageCardFormState,
     confirm_dialog_state: (Vec<Choice<bool>>, ChoicePickerState),
+    marked_cards: HashMap<CardId, Card>,
 }
 
 impl ManageBoardDetailsState {
@@ -950,6 +954,7 @@ impl ManageBoardDetailsState {
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         }
     }
 
@@ -1134,6 +1139,10 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                     String::from("Remove Selected Card"),
                 ));
                 event_controls.push((
+                    Event::Key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL)),
+                    String::from("(Un)Mark Selected Card"),
+                ));
+                event_controls.push((
                     Event::Key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE)),
                     String::from("Move On The Right"),
                 ));
@@ -1303,6 +1312,38 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                                     &mut self.board_columns[self.current_column_index];
                                 let card_list_state = &mut selected_board_column.list_state;
                                 card_list_state.select_next();
+                            }
+                        }
+                        (KeyCode::Char('x'), KeyModifiers::CONTROL) => {
+                            debug!(
+                                "Handling toggling of marking of selected card from currently highlighted column"
+                            );
+                            let card_list_state =
+                                self.board_columns[self.current_column_index].list_state;
+                            if let Some(selected_card_index) = card_list_state.selected() {
+                                let cards = &self.board_columns[self.current_column_index].cards;
+                                let card_to_toggle = cards[selected_card_index].clone();
+                                // build/maintain a list of marked cards
+                                if self.marked_cards.contains_key(&card_to_toggle.id) {
+                                    // remove the card from the marked ones
+                                    self.marked_cards.remove(&card_to_toggle.id);
+                                } else {
+                                    // mark the card
+                                    self.marked_cards
+                                        .insert(card_to_toggle.id.clone(), card_to_toggle);
+                                }
+                            }
+                        }
+                        (KeyCode::Char('v'), KeyModifiers::CONTROL) => {
+                            debug!(
+                                "Handling moving of marked cards to currently highlighted column"
+                            );
+                            let board_column =
+                                &self.board_columns[self.current_column_index].board_column;
+                            for (_card_id, marked_card) in &self.marked_cards {
+                                let mut card_to_update = marked_card.clone();
+                                card_to_update.column_id = board_column.id.clone();
+                                self.card_service.update_card(card_to_update);
                             }
                         }
                         _ => {}
@@ -1616,7 +1657,14 @@ impl StatefulWidget for ManageBoardDetails {
                         let card_items: Vec<ListItem> = cards
                             .iter()
                             .map(|card| {
-                                ListItem::new(Text::from(Line::from(card.title.to_string())))
+                                if state.marked_cards.contains_key(&card.id) {
+                                    let card_title = card.title.to_string();
+                                    ListItem::new(Text::from(Line::from(format!(
+                                        "[X] {card_title}"
+                                    ))))
+                                } else {
+                                    ListItem::new(Text::from(Line::from(card.title.to_string())))
+                                }
                             })
                             .collect();
                         let column_cards_list = List::default().items(card_items).highlight_style(
@@ -1935,7 +1983,7 @@ mod tests {
         let pool = connection.get_db_connection_pool().await?;
         Ok((
             BoardColumnRepo::new(pool.clone()),
-            CardRepo::new(pool.clone(), Arc::new(BoardColumnRepo::new(pool.clone()))),
+            CardRepo::new(pool.clone()),
         ))
     }
 
@@ -2158,7 +2206,7 @@ mod tests {
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2173,6 +2221,7 @@ mod tests {
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let fetched_columns = vec![BoardColumn {
@@ -2257,7 +2306,7 @@ mod tests {
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2276,6 +2325,7 @@ mod tests {
             },
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let _ = state
@@ -2312,7 +2362,7 @@ mod tests {
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2340,6 +2390,7 @@ mod tests {
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let _ = state
@@ -2376,7 +2427,7 @@ mod tests {
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2404,6 +2455,7 @@ mod tests {
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let _ = state
@@ -2436,7 +2488,7 @@ mod tests {
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2480,6 +2532,7 @@ mod tests {
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let _ = state
@@ -2614,7 +2667,7 @@ mod tests {
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2629,6 +2682,7 @@ mod tests {
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let widget = ManageBoardDetails::new();
@@ -2668,7 +2722,7 @@ Create new column
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2696,6 +2750,7 @@ Create new column
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let widget = ManageBoardDetails::new();
@@ -2731,7 +2786,7 @@ Create new column
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2759,6 +2814,7 @@ Create new column
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let widget = ManageBoardDetails::new();
@@ -2796,7 +2852,7 @@ Create new column
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2823,6 +2879,7 @@ Create new column
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let _ = state
@@ -2858,7 +2915,7 @@ Create new column
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -2885,6 +2942,7 @@ Create new column
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let area = Rect::new(0, 0, 20, 6);
@@ -3144,7 +3202,7 @@ Create new column
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3173,6 +3231,7 @@ Create new column
                 state
             },
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let _ = state
@@ -3447,7 +3506,7 @@ Create new column
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3487,6 +3546,7 @@ Create new column
                     .naive_utc(),
             }]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let widget = ManageBoardDetails::new();
@@ -3540,7 +3600,7 @@ Create new card
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3580,6 +3640,7 @@ Create new card
                     .naive_utc(),
             }]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let widget = ManageBoardDetails::new();
@@ -3631,7 +3692,7 @@ Create new card
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3673,6 +3734,7 @@ Create new card
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
         state.board_columns[0].list_state.select(Some(0));
 
@@ -3744,7 +3806,7 @@ Create new card
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3772,6 +3834,7 @@ Create new card
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let _ = state
@@ -3804,7 +3867,7 @@ Create new card
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3863,6 +3926,7 @@ Create new card
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         assert!(state.board_columns[0].list_state.selected().is_none());
@@ -3895,7 +3959,7 @@ Create new card
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3910,6 +3974,7 @@ Create new card
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         assert_eq!(state.current_window_start(2, 4), 0);
@@ -3930,7 +3995,7 @@ Create new card
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -3945,6 +4010,7 @@ Create new card
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         assert_eq!(state.current_window_start(5, 4), 1);
@@ -3970,10 +4036,7 @@ Create new card
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(
-                    Arc::new(second_pool.clone()),
-                    board_column_repo,
-                )),
+                Arc::new(CardRepo::new(Arc::new(second_pool.clone()))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -4001,6 +4064,7 @@ Create new card
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let cards = vec![
@@ -4078,10 +4142,7 @@ Create new card
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(
-                    Arc::new(second_pool.clone()),
-                    board_column_repo,
-                )),
+                Arc::new(CardRepo::new(Arc::new(second_pool.clone()))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -4109,6 +4170,7 @@ Create new card
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let updated_card = Card {
@@ -4253,7 +4315,7 @@ Create new card
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -4268,6 +4330,7 @@ Create new card
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let _ = state
@@ -4293,7 +4356,7 @@ Create new card
                 tokio::sync::mpsc::channel(1).0,
             )),
             card_service: Arc::new(CardService::new(
-                Arc::new(CardRepo::new(Arc::new(pool), board_column_repo)),
+                Arc::new(CardRepo::new(Arc::new(pool))),
                 tokio::sync::mpsc::channel(1).0,
             )),
             notification_service: Arc::new(NotificationService::new(
@@ -4310,6 +4373,7 @@ Create new card
             manage_board_column_form_state: ManageBoardColumnFormState::new(),
             manage_card_form_state: ManageCardFormState::new(vec![]),
             confirm_dialog_state: ChoicePicker::confirmation_dialog(),
+            marked_cards: HashMap::new(),
         };
 
         let _ = state

@@ -269,8 +269,7 @@ mod tests {
             db_path.parent().unwrap().to_path_buf(),
         );
         let pool = connection.get_db_connection_pool().await?;
-        let board_column_repo = Arc::new(BoardColumnRepo::new(pool.clone()));
-        Ok((CardRepo::new(pool.clone(), board_column_repo), pool))
+        Ok((CardRepo::new(pool.clone()), pool))
     }
 
     async fn receive_event(receiver: &mut mpsc::Receiver<AppEvent>) -> AppEvent {

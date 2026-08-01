@@ -1,12 +1,12 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
-use sqlx::{Pool, Sqlite, prelude::FromRow};
+use sqlx::{Pool, Sqlite, prelude::FromRow, sqlite::SqliteConnection};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::model::board::{BoardColumnRepo, BoardColumnRepoError};
+use crate::model::board::{BoardColumn, BoardColumnRepoError};
 
 /// `Card` represents a card of Kanban Board
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, FromRow)]
@@ -58,6 +58,9 @@ pub enum CardRepoError {
     #[error("card with id {id} not found")]
     NotFound { id: String },
 
+    #[error("card not created")]
+    NotCreated,
+
     #[error("card with id {id} could not be deleted")]
     DeleteFailed { id: String },
 
@@ -77,6 +80,56 @@ pub enum CardRepoError {
     BoardColumn(#[from] BoardColumnRepoError),
 }
 
+fn is_sqlite_busy_error(err: &sqlx::Error) -> bool {
+    match err {
+        sqlx::Error::Database(db_err) => {
+            if let Some(code) = db_err.code() {
+                code == "5" || code.eq_ignore_ascii_case("SQLITE_BUSY")
+            } else {
+                db_err.message().contains("locked")
+            }
+        }
+        _ => false,
+    }
+}
+
+struct ColumnCapacity {
+    board_column: BoardColumn,
+    existing_count: u32,
+    card_already_in_column: bool,
+}
+
+impl ColumnCapacity {
+    fn allows_create(&self) -> bool {
+        self.existing_count < self.board_column.wip_limit
+    }
+
+    fn allows_update(&self) -> bool {
+        if self.card_already_in_column {
+            self.existing_count <= self.board_column.wip_limit
+        } else {
+            self.existing_count < self.board_column.wip_limit
+        }
+    }
+}
+
+fn check_wip_limit(capacity: ColumnCapacity, card_id: Option<String>) -> Result<ColumnCapacity> {
+    let allowed = match card_id {
+        None => capacity.allows_create(),
+        Some(_) => capacity.allows_update(),
+    };
+
+    if allowed {
+        Ok(capacity)
+    } else {
+        Err(CardRepoError::WipLimitReached {
+            id: card_id,
+            board_column: capacity.board_column.name.clone(),
+            wip_limit: capacity.board_column.wip_limit,
+        })
+    }
+}
+
 /// specific result type related to `CardRepo`
 pub type Result<T> = std::result::Result<T, CardRepoError>;
 
@@ -84,30 +137,110 @@ pub type Result<T> = std::result::Result<T, CardRepoError>;
 #[derive(Debug)]
 pub struct CardRepo {
     pool: Arc<Pool<Sqlite>>, // reference to the DB connection pool
-    board_column_repo: Arc<BoardColumnRepo>,
 }
 
 impl CardRepo {
-    pub fn new(pool: Arc<Pool<Sqlite>>, board_column_repo: Arc<BoardColumnRepo>) -> Self {
-        Self {
-            pool,
-            board_column_repo,
+    pub fn new(pool: Arc<Pool<Sqlite>>) -> Self {
+        Self { pool }
+    }
+
+    async fn retry_on_busy<F, T>(&self, mut operation: impl FnMut() -> F) -> Result<T>
+    where
+        F: std::future::Future<Output = Result<T>>,
+    {
+        let mut attempts = 0;
+        let max_attempts = 5;
+
+        loop {
+            match operation().await {
+                Ok(result) => return Ok(result),
+                Err(CardRepoError::Database(err))
+                    if attempts < max_attempts && is_sqlite_busy_error(&err) =>
+                {
+                    attempts += 1;
+                    tokio::time::sleep(Duration::from_millis(50 * attempts)).await;
+                    continue;
+                }
+                Err(err) => return Err(err),
+            }
         }
     }
 
     pub async fn create_card(&self, card: NewCard) -> Result<Card> {
-        let (board_column, existing_board_cards) = tokio::try_join!(
-            async {
-                self.board_column_repo
-                    .get_column_by_id(&card.column_id)
-                    .await
-                    .map_err(CardRepoError::BoardColumn)
-            },
-            self.list_cards_for_column(&card.column_id),
-        )?;
-        // enforce business rule related to WIP limit
-        if u32::try_from(existing_board_cards.len()).unwrap() < board_column.wip_limit {
-            let created_card = sqlx::query_as::<_, Card>(
+        self.retry_on_busy(|| self.try_create_card(card.clone()))
+            .await
+    }
+
+    async fn load_column_capacity(
+        &self,
+        tx: &mut SqliteConnection,
+        column_id: &str,
+        card_id: Option<&str>,
+    ) -> Result<ColumnCapacity> {
+        let board_column: BoardColumn = sqlx::query_as::<_, BoardColumn>(
+            r#"
+        SELECT id, name, wip_limit, position, created_at
+        FROM columns
+        WHERE id = ?1
+        "#,
+        )
+        .bind(column_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|_error| {
+            CardRepoError::BoardColumn(BoardColumnRepoError::NotFound {
+                id: column_id.to_string(),
+            })
+        })?;
+
+        let existing_count: i64 = sqlx::query_scalar(
+            r#"
+        SELECT COUNT(*)
+        FROM cards
+        WHERE column_id = ?1
+        "#,
+        )
+        .bind(column_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        let existing_count =
+            u32::try_from(existing_count).expect("card count should always fit into u32");
+
+        let card_already_in_column = if let Some(card_id) = card_id {
+            let exists: i64 = sqlx::query_scalar(
+                r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM cards
+                WHERE id = ?1 AND column_id = ?2
+            )
+            "#,
+            )
+            .bind(card_id)
+            .bind(column_id)
+            .fetch_one(&mut *tx)
+            .await?;
+            exists != 0
+        } else {
+            false
+        };
+
+        Ok(ColumnCapacity {
+            board_column,
+            existing_count,
+            card_already_in_column,
+        })
+    }
+
+    async fn try_create_card(&self, card: NewCard) -> Result<Card> {
+        let mut tx = self.pool.begin().await?;
+        let capacity = self
+            .load_column_capacity(&mut *tx, &card.column_id, None)
+            .await?;
+        let _capacity = check_wip_limit(capacity, None)?;
+
+        let created = sqlx::query_as::<_, Card>(
             r#"
             INSERT INTO cards (id, column_id, title, description, status, blocked_reason)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -120,16 +253,12 @@ impl CardRepo {
         .bind(&card.description)
         .bind(&card.status)
         .bind(&card.blocked_reason)
-        .fetch_one(&*self.pool)
-        .await?;
-            Ok(created_card)
-        } else {
-            Err(CardRepoError::WipLimitReached {
-                id: None,
-                board_column: board_column.name,
-                wip_limit: board_column.wip_limit,
-            })
-        }
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(CardRepoError::NotCreated)?;
+
+        tx.commit().await?;
+        Ok(created)
     }
 
     pub async fn get_card_by_id(&self, id: &str) -> Result<Card> {
@@ -164,33 +293,26 @@ impl CardRepo {
     }
 
     pub async fn update_card(&self, card: Card) -> Result<Card> {
-        let (board_column, existing_board_cards) = tokio::try_join!(
-            async {
-                self.board_column_repo
-                    .get_column_by_id(&card.column_id)
-                    .await
-                    .map_err(CardRepoError::BoardColumn)
-            },
-            self.list_cards_for_column(&card.column_id),
-        )?;
-        // enforce business rule related to WIP limit
-        let existing_count = u32::try_from(existing_board_cards.len()).unwrap();
-        let card_already_in_column = existing_board_cards
-            .iter()
-            .any(|existing_card| existing_card.id == card.id);
-        let ok_to_update = if card_already_in_column {
-            existing_count <= board_column.wip_limit
-        } else {
-            existing_count < board_column.wip_limit
-        };
+        self.retry_on_busy(|| self.try_update_card(card.clone()))
+            .await
+    }
 
-        if ok_to_update {
-            sqlx::query_as::<_, Card>(
+    async fn try_update_card(&self, card: Card) -> Result<Card> {
+        let mut tx = self.pool.begin().await?;
+        let capacity = self
+            .load_column_capacity(&mut *tx, &card.column_id, Some(&card.id))
+            .await?;
+        let _capacity = check_wip_limit(capacity, Some(card.id.clone()))?;
+
+        let updated = sqlx::query_as::<_, Card>(
             r#"
             UPDATE cards
-            SET column_id = ?1, title = ?2, description = ?3, status = ?4, blocked_reason = ?5, started_at = ?6, completed_at = ?7
+            SET column_id = ?1, title = ?2, description = ?3,
+                status = ?4, blocked_reason = ?5,
+                started_at = ?6, completed_at = ?7
             WHERE id = ?8
-            RETURNING id, column_id, title, description, status, blocked_reason, created_at, started_at, completed_at
+            RETURNING id, column_id, title, description, status,
+                      blocked_reason, created_at, started_at, completed_at
             "#,
         )
         .bind(&card.column_id)
@@ -201,18 +323,14 @@ impl CardRepo {
         .bind(card.started_at)
         .bind(card.completed_at)
         .bind(&card.id)
-        .fetch_optional(&*self.pool)
+        .fetch_optional(&mut *tx)
         .await?
         .ok_or(CardRepoError::NotFound {
-            id: String::from(&card.id),
-        })
-        } else {
-            Err(CardRepoError::WipLimitReached {
-                id: Some(card.id),
-                board_column: board_column.name,
-                wip_limit: board_column.wip_limit,
-            })
-        }
+            id: card.id.clone(),
+        })?;
+
+        tx.commit().await?;
+        Ok(updated)
     }
 
     pub async fn delete_card_by_id(&self, id: &str) -> Result<()> {
@@ -276,10 +394,7 @@ mod tests {
             db_path.parent().unwrap().to_path_buf(),
         );
         let pool = connection.get_db_connection_pool().await?;
-        Ok(CardRepo::new(
-            pool.clone(),
-            Arc::new(BoardColumnRepo::new(pool)),
-        ))
+        Ok(CardRepo::new(pool.clone()))
     }
 
     async fn insert_test_column(pool: Arc<Pool<Sqlite>>, name: &str) -> Result<String> {
@@ -405,6 +520,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_card_fails_when_wip_limit_is_zero() -> Result<()> {
+        let temp_dir = tempdir()?;
+        let db_file = temp_dir.path().join("card_wip_create_zero.db");
+        let repo = init_repo(&db_file).await?;
+
+        let column_id = insert_test_column_with_limit(repo.pool.clone(), "Zero WIP", 0, 0).await?;
+
+        let error = repo
+            .create_card(NewCard::new(
+                column_id.clone(),
+                String::from("No capacity"),
+                None,
+                String::from("Active"),
+                None,
+            ))
+            .await
+            .expect_err("expected WipLimitReached");
+
+        assert!(
+            matches!(error, CardRepoError::WipLimitReached { id: None, board_column, wip_limit } if board_column == "Zero WIP" && wip_limit == 0)
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn update_card_fails_when_moving_into_a_column_at_wip_limit() -> Result<()> {
         let temp_dir = tempdir()?;
         let db_file = temp_dir.path().join("card_wip_update_move.db");
@@ -446,6 +586,43 @@ mod tests {
 
         assert!(
             matches!(error, CardRepoError::WipLimitReached { id: Some(_), board_column, wip_limit } if board_column == "Target" && wip_limit == 1)
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_card_fails_when_moving_into_a_zero_wip_limit_column() -> Result<()> {
+        let temp_dir = tempdir()?;
+        let db_file = temp_dir.path().join("card_wip_update_move_zero.db");
+        let repo = init_repo(&db_file).await?;
+
+        let source_column_id =
+            insert_test_column_with_limit_auto_position(repo.pool.clone(), "SourceZero", 2).await?;
+        let target_column_id =
+            insert_test_column_with_limit_auto_position(repo.pool.clone(), "Zero WIP", 0).await?;
+
+        let created = repo
+            .create_card(NewCard::new(
+                source_column_id.clone(),
+                String::from("Move me"),
+                None,
+                String::from("Active"),
+                None,
+            ))
+            .await?;
+
+        let updated = Card {
+            column_id: target_column_id.clone(),
+            ..created
+        };
+
+        let error = repo
+            .update_card(updated)
+            .await
+            .expect_err("expected WipLimitReached");
+
+        assert!(
+            matches!(error, CardRepoError::WipLimitReached { id: Some(_), board_column, wip_limit } if board_column == "Zero WIP" && wip_limit == 0)
         );
         Ok(())
     }
@@ -517,6 +694,41 @@ mod tests {
 
         let result = repo.update_card(updated).await?;
         assert_eq!(result.title, "Only card updated");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_card_succeeds_when_column_has_exactly_wip_limit_and_card_is_already_present()
+    -> Result<()> {
+        let temp_dir = tempdir()?;
+        let db_file = temp_dir.path().join("card_wip_update_same_column_exact.db");
+        let repo = init_repo(&db_file).await?;
+
+        let column_id =
+            insert_test_column_with_limit(repo.pool.clone(), "ExactColumn", 1, 0).await?;
+
+        let created = repo
+            .create_card(NewCard::new(
+                column_id.clone(),
+                String::from("Exact card"),
+                None,
+                String::from("Active"),
+                None,
+            ))
+            .await?;
+
+        let updated = Card {
+            title: String::from("Exact card updated"),
+            description: Some(String::from("Updated description")),
+            ..created
+        };
+
+        let result = repo.update_card(updated).await?;
+        assert_eq!(result.title, "Exact card updated");
+        assert_eq!(
+            result.description,
+            Some(String::from("Updated description"))
+        );
         Ok(())
     }
 

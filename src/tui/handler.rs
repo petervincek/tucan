@@ -140,7 +140,7 @@ impl Handler {
         let (board_service, register_event_handler_board_service) =
             create_board_service(board_column_repo.clone(), &event_bus);
 
-        let card_repo = Arc::new(CardRepo::new(db_pool.clone(), board_column_repo));
+        let card_repo = Arc::new(CardRepo::new(db_pool.clone()));
         let (card_service, register_event_handler_card_service) =
             create_card_service(card_repo, &event_bus);
 

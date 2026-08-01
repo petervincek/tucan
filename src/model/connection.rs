@@ -7,6 +7,7 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use sqlx::migrate::MigrateError;
 use sqlx::pool::PoolConnectionMetadata;
@@ -99,7 +100,8 @@ impl Connection {
             let options = SqliteConnectOptions::new()
                 .filename(db_url)
                 .create_if_missing(true)
-                .journal_mode(SqliteJournalMode::Wal);
+                .journal_mode(SqliteJournalMode::Wal)
+                .busy_timeout(Duration::from_secs(5));
             // set the logging
             // options = options.log_statements(log::LevelFilter::Off);
             let db_pool = SqlitePoolOptions::new()
@@ -278,6 +280,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_db_connection_pool_errors_when_current_board_is_missing() -> Result<()> {
+        let _lock = acquire_test_lock();
         reset_db_pool();
         let temp_dir = tempdir()?;
 
