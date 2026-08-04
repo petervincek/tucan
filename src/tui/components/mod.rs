@@ -1,5 +1,6 @@
 pub mod choice_picker;
 pub mod confirmation_dialog;
+pub mod date_time_picker;
 pub mod footer;
 pub mod header;
 pub mod integer_input;
