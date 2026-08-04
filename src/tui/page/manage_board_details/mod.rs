@@ -690,8 +690,8 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                                         status: status.to_string(),
                                         blocked_reason: Some(blocked_reason),
                                         created_at: created_at.unwrap_or_default(),
-                                        started_at: started_at,
-                                        completed_at: completed_at,
+                                        started_at,
+                                        completed_at,
                                     });
                                 } else {
                                     // in this case the id does not exist, so it's create

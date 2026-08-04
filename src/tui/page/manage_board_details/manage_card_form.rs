@@ -521,31 +521,30 @@ impl
             }
         } else if let ManageCardFormPageView::DateTimePicker { target_attribute } =
             self.current_page.clone()
+            && let Event::Key(key_event) = event
         {
-            if let Event::Key(key_event) = event {
-                match (key_event.code, key_event.modifiers) {
-                    (KeyCode::Char('s'), KeyModifiers::CONTROL) => {
-                        self.current_page = ManageCardFormPageView::Form;
-                    }
-                    (KeyCode::Char('f'), KeyModifiers::CONTROL) => {
-                        self.current_page = ManageCardFormPageView::Form;
-                    }
-                    _ => {
-                        // delegate the handling of the event to underlying widget 'date_time_picker'
-                        let result = self.date_time_picker.handle_event(event)?;
-                        // explicitly handle the break state, in that case set the returned value from the widget 'date_time_picker'
-                        // to the requested 'target_attribute', this a sort of navigation mechanism
-                        if let ControlFlow::Break(date_time) = result {
-                            match target_attribute {
-                                DateTimePickerTargetAttribute::StartedAt => {
-                                    self.started_at = Some(date_time);
-                                }
-                                DateTimePickerTargetAttribute::CompletedAt => {
-                                    self.completed_at = Some(date_time);
-                                }
+            match (key_event.code, key_event.modifiers) {
+                (KeyCode::Char('s'), KeyModifiers::CONTROL) => {
+                    self.current_page = ManageCardFormPageView::Form;
+                }
+                (KeyCode::Char('f'), KeyModifiers::CONTROL) => {
+                    self.current_page = ManageCardFormPageView::Form;
+                }
+                _ => {
+                    // delegate the handling of the event to underlying widget 'date_time_picker'
+                    let result = self.date_time_picker.handle_event(event)?;
+                    // explicitly handle the break state, in that case set the returned value from the widget 'date_time_picker'
+                    // to the requested 'target_attribute', this a sort of navigation mechanism
+                    if let ControlFlow::Break(date_time) = result {
+                        match target_attribute {
+                            DateTimePickerTargetAttribute::StartedAt => {
+                                self.started_at = Some(date_time);
                             }
-                            self.current_page = ManageCardFormPageView::Form;
+                            DateTimePickerTargetAttribute::CompletedAt => {
+                                self.completed_at = Some(date_time);
+                            }
                         }
+                        self.current_page = ManageCardFormPageView::Form;
                     }
                 }
             }

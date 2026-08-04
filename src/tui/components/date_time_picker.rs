@@ -251,35 +251,35 @@ impl DateTimePickerState {
 
 impl EventHandler<NaiveDateTime, ()> for DateTimePickerState {
     fn get_event_controls(&self) -> Vec<(Event, String)> {
-        let mut event_controls = Vec::new();
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)),
-            String::from("Move To Next Field"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)),
-            String::from("Increment date/time value"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE)),
-            String::from("Increment date/time value"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)),
-            String::from("Decrement date/time value"),
-        ));
-        event_controls.push((
-            Event::Key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE)),
-            String::from("Decrement date/time value"),
-        ));
-        event_controls
+        vec![
+            (
+                Event::Key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)),
+                String::from("Move To Next Field"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)),
+                String::from("Increment date/time value"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE)),
+                String::from("Increment date/time value"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)),
+                String::from("Decrement date/time value"),
+            ),
+            (
+                Event::Key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE)),
+                String::from("Decrement date/time value"),
+            ),
+        ]
     }
 
     fn handle_event(&mut self, event: Event) -> Result<ControlFlow<NaiveDateTime, ()>> {
         if let Event::Key(key_event) = event
             && (key_event.code == KeyCode::Enter && key_event.modifiers == KeyModifiers::NONE)
         {
-            let date_time = self.date_time.clone();
+            let date_time = self.date_time;
             return Ok(ControlFlow::Break(date_time));
         } else {
             match self.current_field {
@@ -446,7 +446,7 @@ impl EventHandler<NaiveDateTime, ()> for DateTimePickerState {
 }
 
 /// `DateTimePicker` represents the Stateful widget that will be rendered for our TUI project
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct DateTimePicker {}
 
 impl DateTimePicker {
