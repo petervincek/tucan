@@ -17,7 +17,7 @@ mod tests {
         ManageBoardColumnFormField, ManageBoardColumnFormState,
     };
     use crate::tui::page::manage_board_details::manage_card_form::{
-        CardStatus, ManageCardFormField, ManageCardFormState,
+        CardStatus, ManageCardFormField, ManageCardFormPageView, ManageCardFormState,
     };
     use crate::tui::page::manage_board_details::{
         BoardColumnWithCards, ManageBoardDetails, ManageBoardDetailsState, PageView,
@@ -1114,6 +1114,16 @@ Create new column
                 .naive_utc(),
         }];
         let mut state = ManageCardFormState::new(board_columns);
+        let started_at = Utc
+            .timestamp_opt(2_000_000, 0)
+            .single()
+            .unwrap()
+            .naive_utc();
+        let completed_at = Utc
+            .timestamp_opt(3_000_000, 0)
+            .single()
+            .unwrap()
+            .naive_utc();
         let card = Card {
             id: String::from("card-1"),
             column_id: String::from("column-1"),
@@ -1126,8 +1136,8 @@ Create new column
                 .single()
                 .unwrap()
                 .naive_utc(),
-            started_at: None,
-            completed_at: None,
+            started_at: Some(started_at),
+            completed_at: Some(completed_at),
         };
 
         state.preset_with_card_data(card);
@@ -1138,6 +1148,8 @@ Create new column
         assert_eq!(state.description.get_text_as_string(), "Line one\nLine two");
         assert_eq!(state.status.1.selected_index, 1);
         assert_eq!(state.blocked_reason.get_buffer(), "Waiting on API");
+        assert_eq!(state.started_at, Some(started_at));
+        assert_eq!(state.completed_at, Some(completed_at));
         assert!(matches!(state.current_field, ManageCardFormField::ColumnId));
     }
 
@@ -1191,6 +1203,18 @@ Create new column
         state.description.set_text(vec![String::from("Line one")]);
         state.status.1.selected_index = 1;
         fill_text_input(&mut state.blocked_reason, "Blocked reason");
+        state.started_at = Some(
+            Utc.timestamp_opt(2_000_000, 0)
+                .single()
+                .unwrap()
+                .naive_utc(),
+        );
+        state.completed_at = Some(
+            Utc.timestamp_opt(3_000_000, 0)
+                .single()
+                .unwrap()
+                .naive_utc(),
+        );
         state.current_field = ManageCardFormField::BlockedReason;
 
         state.clear();
@@ -1201,6 +1225,8 @@ Create new column
         assert_eq!(state.description.get_text_as_string(), "");
         assert_eq!(state.status.1.selected_index, 0);
         assert_eq!(state.blocked_reason.get_buffer(), "");
+        assert!(state.started_at.is_none());
+        assert!(state.completed_at.is_none());
         assert!(matches!(state.current_field, ManageCardFormField::ColumnId));
     }
 
@@ -1287,6 +1313,171 @@ Create new column
             .unwrap();
 
         assert!(matches!(result, ControlFlow::Continue(())));
+    }
+
+    #[test]
+    fn test_manage_card_form_state_ctrl_s_opens_started_at_picker_and_sets_date() {
+        let mut state = ManageCardFormState::new(vec![BoardColumn {
+            id: String::from("column-1"),
+            name: String::from("Backlog"),
+            wip_limit: 3,
+            position: 0,
+            created_at: Utc
+                .timestamp_opt(1_000_000, 0)
+                .single()
+                .unwrap()
+                .naive_utc(),
+        }]);
+
+        let fixed_started_at = Utc
+            .timestamp_opt(2_000_000, 0)
+            .single()
+            .unwrap()
+            .naive_utc();
+
+        let _ = state
+            .handle_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .unwrap();
+        assert!(matches!(
+            state.current_page,
+            ManageCardFormPageView::DateTimePicker { .. }
+        ));
+
+        state
+            .date_time_picker
+            .preset_with_date_time(fixed_started_at);
+        let _ = state
+            .handle_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .unwrap();
+
+        assert_eq!(state.started_at, Some(fixed_started_at));
+        assert!(matches!(state.current_page, ManageCardFormPageView::Form));
+    }
+
+    #[test]
+    fn test_manage_card_form_state_ctrl_f_opens_completed_at_picker_and_sets_date() {
+        let mut state = ManageCardFormState::new(vec![BoardColumn {
+            id: String::from("column-1"),
+            name: String::from("Backlog"),
+            wip_limit: 3,
+            position: 0,
+            created_at: Utc
+                .timestamp_opt(1_000_000, 0)
+                .single()
+                .unwrap()
+                .naive_utc(),
+        }]);
+
+        let fixed_completed_at = Utc
+            .timestamp_opt(3_000_000, 0)
+            .single()
+            .unwrap()
+            .naive_utc();
+
+        let _ = state
+            .handle_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('f'),
+                KeyModifiers::CONTROL,
+            )))
+            .unwrap();
+        assert!(matches!(
+            state.current_page,
+            ManageCardFormPageView::DateTimePicker { .. }
+        ));
+
+        state
+            .date_time_picker
+            .preset_with_date_time(fixed_completed_at);
+        let _ = state
+            .handle_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .unwrap();
+
+        assert_eq!(state.completed_at, Some(fixed_completed_at));
+        assert!(matches!(state.current_page, ManageCardFormPageView::Form));
+    }
+
+    #[test]
+    fn test_manage_card_form_state_submit_includes_started_and_completed_at() {
+        let mut state = ManageCardFormState::new(vec![BoardColumn {
+            id: String::from("column-1"),
+            name: String::from("Backlog"),
+            wip_limit: 3,
+            position: 0,
+            created_at: Utc
+                .timestamp_opt(1_000_000, 0)
+                .single()
+                .unwrap()
+                .naive_utc(),
+        }]);
+
+        fill_text_input(&mut state.title, "Fix bug");
+
+        let fixed_started_at = Utc
+            .timestamp_opt(2_000_000, 0)
+            .single()
+            .unwrap()
+            .naive_utc();
+        let fixed_completed_at = Utc
+            .timestamp_opt(3_000_000, 0)
+            .single()
+            .unwrap()
+            .naive_utc();
+
+        let _ = state
+            .handle_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .unwrap();
+        state
+            .date_time_picker
+            .preset_with_date_time(fixed_started_at);
+        let _ = state
+            .handle_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .unwrap();
+
+        let _ = state
+            .handle_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('f'),
+                KeyModifiers::CONTROL,
+            )))
+            .unwrap();
+        state
+            .date_time_picker
+            .preset_with_date_time(fixed_completed_at);
+        let _ = state
+            .handle_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .unwrap();
+
+        let result = state
+            .handle_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .unwrap();
+
+        match result {
+            ControlFlow::Break((_, _, _, _, _, _, _, started_at, completed_at)) => {
+                assert_eq!(started_at, Some(fixed_started_at));
+                assert_eq!(completed_at, Some(fixed_completed_at));
+            }
+            _ => panic!("expected submission break"),
+        }
     }
 
     #[tokio::test]
@@ -1881,13 +2072,26 @@ Create new card
             .unwrap();
 
         match result {
-            ControlFlow::Break((id, column_id, title, description, status, blocked_reason)) => {
+            ControlFlow::Break((
+                id,
+                column_id,
+                title,
+                description,
+                status,
+                blocked_reason,
+                created_at,
+                started_at,
+                completed_at,
+            )) => {
                 assert!(id.is_none());
                 assert_eq!(column_id, "column-1");
                 assert_eq!(title, "Fix bug");
                 assert_eq!(description, "");
                 assert_eq!(status, CardStatus::Active);
                 assert_eq!(blocked_reason, "");
+                assert!(created_at.is_none(), "expecting None for 'created_at'");
+                assert!(started_at.is_none(), "expecting None for 'started_at'");
+                assert!(completed_at.is_none(), "expecting None for 'completed_at'");
             }
             _ => panic!("expected submission break"),
         }

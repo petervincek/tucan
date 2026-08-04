@@ -560,7 +560,6 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                                         name: board_column_name,
                                         wip_limit: wip_limit.try_into().unwrap(),
                                         position: board_column_position.try_into().unwrap(),
-                                        // TODO: API can be better
                                         created_at: NaiveDateTime::default(), // does not matter here, it's not used
                                     });
                                 } else {
@@ -670,6 +669,9 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                                 description,
                                 status,
                                 blocked_reason,
+                                created_at,
+                                started_at,
+                                completed_at,
                             )) = result
                             {
                                 // process the collected data from the form
@@ -687,10 +689,9 @@ impl EventHandler<(), ()> for ManageBoardDetailsState {
                                         description: Some(description),
                                         status: status.to_string(),
                                         blocked_reason: Some(blocked_reason),
-                                        // TODO: API can be better
-                                        created_at: NaiveDateTime::default(),
-                                        started_at: None,
-                                        completed_at: None,
+                                        created_at: created_at.unwrap_or_default(),
+                                        started_at: started_at,
+                                        completed_at: completed_at,
                                     });
                                 } else {
                                     // in this case the id does not exist, so it's create
@@ -957,8 +958,8 @@ impl StatefulWidget for ManageBoardDetails {
                         blocked_reason,
                         description,
                         created_at,
-                        started_at: _,
-                        completed_at: _,
+                        started_at,
+                        completed_at,
                         id: _id,
                         column_id: _column_id,
                     } = card;
@@ -967,6 +968,7 @@ impl StatefulWidget for ManageBoardDetails {
                     let (
                         title_area,
                         status_created_at_area,
+                        started_at_and_completed_at_area,
                         maybe_blocked_reason_area,
                         description_area,
                     ) = if let Some(blocked_reason) = blocked_reason
@@ -974,37 +976,53 @@ impl StatefulWidget for ManageBoardDetails {
                     {
                         let vertical_layout = Layout::vertical([
                             Constraint::Length(2), // place for title
-                            Constraint::Length(2), // place for status + created_at
+                            Constraint::Length(1), // place for status + created_at
+                            Constraint::Length(2), // place for started_at + completed_at
                             Constraint::Length(2), // place for blocked_reason
                             Constraint::Fill(1),   // place for description
                         ]);
                         let [
                             title_area,
                             status_created_at_area,
+                            started_at_and_completed_at_area,
                             blocked_reason_area,
                             description_area,
                         ] = area.layout(&vertical_layout);
                         (
                             title_area,
                             status_created_at_area,
+                            started_at_and_completed_at_area,
                             Some(blocked_reason_area),
                             description_area,
                         )
                     } else {
                         let vertical_layout = Layout::vertical([
                             Constraint::Length(2), // place for title
-                            Constraint::Length(2), // place for status + created_at
+                            Constraint::Length(1), // place for status + created_at
+                            Constraint::Length(2), // place for started_at + completed_at
                             Constraint::Fill(1),   // place for description
                         ]);
-                        let [title_area, status_created_at_area, description_area] =
-                            area.layout(&vertical_layout);
-                        (title_area, status_created_at_area, None, description_area)
+                        let [
+                            title_area,
+                            status_created_at_area,
+                            started_at_and_completed_at_area,
+                            description_area,
+                        ] = area.layout(&vertical_layout);
+                        (
+                            title_area,
+                            status_created_at_area,
+                            started_at_and_completed_at_area,
+                            None,
+                            description_area,
+                        )
                     };
 
                     let horizontal_row_layout =
                         Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]);
                     let [status_area, created_at_area] =
                         status_created_at_area.layout(&horizontal_row_layout);
+                    let [started_at_area, completed_at_area] =
+                        started_at_and_completed_at_area.layout(&horizontal_row_layout);
 
                     // render title
                     let title_paragraph = Paragraph::new(title.to_string());
@@ -1037,10 +1055,40 @@ impl StatefulWidget for ManageBoardDetails {
                     );
 
                     // render the created_at
-                    let created_at_paragraph = Paragraph::new(format!("created: {created_at}"));
+                    let created_at_formatted = format_date_time(Some(*created_at));
+                    let created_at_paragraph =
+                        Paragraph::new(format!("created: {created_at_formatted}"));
                     Widget::render(
                         created_at_paragraph,
                         Center::builder(created_at_area)
+                            .horizontally(false)
+                            .vertically(false)
+                            .build()
+                            .center(),
+                        buf,
+                    );
+
+                    // render the started_at
+                    let started_at_formatted = format_date_time(*started_at);
+                    let started_at_paragraph =
+                        Paragraph::new(format!("started: {started_at_formatted}"));
+                    Widget::render(
+                        started_at_paragraph,
+                        Center::builder(started_at_area)
+                            .horizontally(false)
+                            .vertically(false)
+                            .build()
+                            .center(),
+                        buf,
+                    );
+
+                    // render the completed_at
+                    let completed_at_formatted = format_date_time(*completed_at);
+                    let completed_at_paragraph =
+                        Paragraph::new(format!("completed: {completed_at_formatted}"));
+                    Widget::render(
+                        completed_at_paragraph,
+                        Center::builder(completed_at_area)
                             .horizontally(false)
                             .vertically(false)
                             .build()
@@ -1098,5 +1146,13 @@ impl StatefulWidget for ManageBoardDetails {
                 }
             }
         }
+    }
+}
+
+fn format_date_time(maybe_date_time: Option<NaiveDateTime>) -> String {
+    if let Some(date_time) = maybe_date_time {
+        date_time.format("%Y-%m-%d %H:%M:%S").to_string()
+    } else {
+        " - ".to_string()
     }
 }
